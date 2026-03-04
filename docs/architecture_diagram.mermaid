@@ -1,0 +1,53 @@
+graph TB
+    subgraph FOUNDATION["Phase 0-1: Foundation"]
+        CONFIG["config.yaml<br/>Central Configuration"]
+        LOGGER["logger.py<br/>Centralized Logging"]
+        README["README.md<br/>Business Context & ROI"]
+        COMPLIANCE["compliance_notes.md<br/>FCA & GDPR Alignment"]
+    end
+
+    subgraph DATA_PIPELINE["Data Pipeline"]
+        P2["Phase 2: Data Ingestion<br/>━━━━━━━━━━━━━━<br/>Download dataset<br/>GDPR simulation<br/>━━━━━━━━━━━━━━<br/>📦 data/raw/creditcard.csv"]
+        P3["Phase 3: Data Engineering<br/>━━━━━━━━━━━━━━<br/>Clean → Scale → Split → SMOTE<br/>Temporal features<br/>━━━━━━━━━━━━━━<br/>📦 data/processed/*.csv<br/>📦 models/scaler.pkl"]
+        P4["Phase 4: Graph Generation<br/>━━━━━━━━━━━━━━<br/>NetworkX fraud rings<br/>Account connections<br/>━━━━━━━━━━━━━━<br/>📦 graphs/fraud_graph.gpickle"]
+        P2 --> P3
+        P3 --> P4
+    end
+
+    subgraph MODEL_PIPELINE["Model Pipeline"]
+        P5["Phase 5: Model Training<br/>━━━━━━━━━━━━━━<br/>XGBoost + LightGBM<br/>AUPRC / Precision / Recall<br/>━━━━━━━━━━━━━━<br/>📦 models/best_model.pkl<br/>📦 models/metrics.json"]
+        P6["Phase 6: Stress Testing<br/>━━━━━━━━━━━━━━<br/>Adversarial perturbations<br/>Robustness validation<br/>━━━━━━━━━━━━━━<br/>📦 reports/stress_test_results.json"]
+        P7["Phase 7: Explainability<br/>━━━━━━━━━━━━━━<br/>SHAP TreeExplainer<br/>LIME Tabular<br/>━━━━━━━━━━━━━━<br/>📦 models/shap_explainer.pkl<br/>📦 models/lime_explainer.pkl"]
+        P5 --> P6
+        P5 --> P7
+    end
+
+    subgraph DEPLOYMENT["Deployment & UI"]
+        P8["Phase 8: Inference API<br/>━━━━━━━━━━━━━━<br/>FastAPI microservice<br/>JSON risk score + SHAP<br/>━━━━━━━━━━━━━━<br/>📦 REST endpoint :8000"]
+        P9["Phase 9: Streamlit Dashboard<br/>━━━━━━━━━━━━━━<br/>Risk gauge + SHAP waterfall<br/>Fraud ring viz + Plain English<br/>━━━━━━━━━━━━━━<br/>📦 Streamlit app :8501"]
+        P10["Phase 10: Feedback & CI/CD<br/>━━━━━━━━━━━━━━<br/>Human override button<br/>GitHub Actions auto-test<br/>━━━━━━━━━━━━━━<br/>📦 feedback.db<br/>📦 .github/workflows/test.yml"]
+        P8 --> P9
+        P9 --> P10
+    end
+
+    P3 --> P5
+    P7 --> P8
+    P4 --> P9
+
+    CONFIG -.->|"Every phase reads"| P2
+    CONFIG -.->|"config"| P3
+    CONFIG -.->|"config"| P5
+    LOGGER -.->|"Every phase logs"| P2
+    LOGGER -.->|"to pipeline.log"| P5
+
+    P10 -->|"Feedback triggers<br/>retraining"| P3
+
+    classDef foundation fill:#2D3748,stroke:#4A5568,color:#E2E8F0
+    classDef data fill:#2B6CB0,stroke:#2C5282,color:#EBF8FF
+    classDef model fill:#2F855A,stroke:#276749,color:#F0FFF4
+    classDef deploy fill:#9B2C2C,stroke:#822727,color:#FFF5F5
+
+    class CONFIG,LOGGER,README,COMPLIANCE foundation
+    class P2,P3,P4 data
+    class P5,P6,P7 model
+    class P8,P9,P10 deploy

@@ -1,0 +1,40 @@
+# Data (raw data stays local, never pushed to GitHub)
+data/raw/
+data/processed/
+data/feedback/*.db
+
+# Models (too large for Git)
+models/*.pkl
+models/*.json
+
+# Logs
+logs/
+
+# Reports (generated artifacts)
+reports/
+
+# Graphs (generated artifacts)
+graphs/
+
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+.eggs/
+dist/
+build/
+*.so
+.venv/
+venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env

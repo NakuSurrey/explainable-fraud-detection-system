@@ -1,0 +1,130 @@
+# ============================================================================
+# EXPLAINABLE FRAUD DETECTION SYSTEM - CENTRAL CONFIGURATION
+# ============================================================================
+# RULE: Every phase reads this file. Change a path or parameter here ONCE,
+# and all phases adapt. Zero hardcoded paths in any script.
+# ============================================================================
+
+project:
+  name: "Explainable Fraud Detection System"
+  version: "1.0.0"
+  author: "YOUR_NAME_HERE"
+
+environment:
+  python_version: "3.10"
+  random_seed: 42
+  log_level: "INFO"
+  log_file: "logs/pipeline.log"
+
+# --- Phase 2: Data Ingestion ---
+data:
+  raw_path: "data/raw/creditcard.csv"
+  dataset_source: "kaggle"
+  dataset_name: "mlg-ulb/creditcardfraud"
+
+# --- Phase 3: Data Engineering ---
+preprocessing:
+  processed_dir: "data/processed"
+  train_path: "data/processed/X_train.csv"
+  test_path: "data/processed/X_test.csv"
+  val_path: "data/processed/X_val.csv"
+  y_train_path: "data/processed/y_train.csv"
+  y_test_path: "data/processed/y_test.csv"
+  y_val_path: "data/processed/y_val.csv"
+  scaler_path: "models/scaler.pkl"
+  test_size: 0.2
+  val_size: 0.1
+  scaling_method: "robust"
+  smote:
+    enabled: true
+    sampling_strategy: 0.3
+    k_neighbors: 5
+
+# --- Phase 4: Graph Analytics ---
+graph:
+  output_path: "graphs/fraud_graph.gpickle"
+  edge_list_path: "graphs/fraud_edges.csv"
+  visualization_path: "graphs/fraud_ring_visualization.html"
+  similarity_threshold: 0.85
+
+# --- Phase 5: Model Training ---
+model:
+  output_dir: "models"
+  xgboost:
+    model_path: "models/xgboost_fraud_v1.pkl"
+    params:
+      n_estimators: 500
+      max_depth: 6
+      learning_rate: 0.05
+      eval_metric: "aucpr"
+      early_stopping_rounds: 50
+      tree_method: "hist"
+      random_state: 42
+  lightgbm:
+    model_path: "models/lightgbm_fraud_v1.pkl"
+    params:
+      n_estimators: 500
+      max_depth: 6
+      learning_rate: 0.05
+      is_unbalance: true
+      metric: "average_precision"
+      early_stopping_rounds: 50
+      random_state: 42
+  metrics_path: "models/metrics.json"
+  comparison_path: "models/model_comparison.json"
+  best_model_path: "models/best_model.pkl"
+
+# --- Phase 6: Stress Testing ---
+stress_test:
+  results_path: "reports/stress_test_results.json"
+  report_path: "reports/stress_test_report.txt"
+  perturbations:
+    amount_reduction_pct: [0.1, 0.2, 0.3, 0.5]
+    time_shift_hours: [1, 3, 6, 12]
+    feature_noise_std: [0.01, 0.05, 0.1]
+  n_adversarial_samples: 500
+
+# --- Phase 7: Explainability (XAI) ---
+explainability:
+  shap_explainer_path: "models/shap_explainer.pkl"
+  shap_values_path: "models/shap_values.pkl"
+  lime_explainer_path: "models/lime_explainer.pkl"
+  background_samples: 100
+  max_display_features: 15
+
+# --- Phase 8: Inference API ---
+api:
+  host: "0.0.0.0"
+  port: 8000
+  model_path: "models/best_model.pkl"
+  explainer_path: "models/shap_explainer.pkl"
+  scaler_path: "models/scaler.pkl"
+  cors_origins: ["http://localhost:8501"]
+
+# --- Phase 9: Dashboard ---
+dashboard:
+  title: "Fraud Detection Command Center"
+  port: 8501
+  api_url: "http://localhost:8000"
+
+# --- Phase 10: Human Feedback & CI/CD ---
+feedback:
+  db_path: "data/feedback/feedback.db"
+  retrain_threshold: 100
+  export_path: "data/feedback/corrections_export.csv"
+
+cicd:
+  test_command: "python -m pytest tests/ -v"
+  min_auprc_threshold: 0.70
+
+# --- Cloud Deployment (Azure) ---
+deployment:
+  platform: "azure"
+  resource_group: "fraud-detection-rg"
+  region: "eastus"
+
+# --- Data Drift Monitoring ---
+monitoring:
+  drift_check_interval_days: 7
+  psi_threshold: 0.2
+  auprc_decay_threshold: 0.05
