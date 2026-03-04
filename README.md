@@ -368,6 +368,6 @@ This project is developed for educational and portfolio purposes. The dataset us
 
 ## Author
 
-**YOUR_NAME_HERE**
+Nakul Arora
 
 *Engineered a machine learning fraud detection pipeline using XGBoost and Python, applying SMOTE to handle heavily imbalanced financial data and optimizing for AUPRC to minimize false positives. Integrated SHAP and LIME frameworks to provide local and global interpretability, transforming opaque algorithmic decisions into transparent, auditable reports suitable for compliance and risk management teams.*
