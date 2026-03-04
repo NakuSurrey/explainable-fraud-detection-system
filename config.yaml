@@ -41,11 +41,40 @@ preprocessing:
     k_neighbors: 5
 
 # --- Phase 4: Graph Analytics ---
+# graph:
+#   output_path: "graphs/fraud_graph.gpickle"
+#   edge_list_path: "graphs/fraud_edges.csv"
+#   visualization_path: "graphs/fraud_ring_visualization.html"
+#   similarity_threshold: 0.85
 graph:
-  output_path: "graphs/fraud_graph.gpickle"
+  # Output artifacts
+  output_dir: "graphs"
+  graph_path: "graphs/fraud_graph.gpickle"
   edge_list_path: "graphs/fraud_edges.csv"
+  rings_path: "graphs/fraud_rings.json"
+  summary_path: "graphs/graph_summary.json"
   visualization_path: "graphs/fraud_ring_visualization.html"
-  similarity_threshold: 0.85
+
+  # Strategy: Combined similarity + temporal proximity
+  strategy: "similarity_temporal"
+
+  # Similarity parameters (Approach A)
+  similarity_metric: "cosine"          # cosine or euclidean
+  similarity_threshold: 0.85           # min cosine similarity to draw edge
+  pca_features: ["V1","V2","V3","V4","V5","V6","V7","V8","V9","V10",
+                  "V11","V12","V13","V14","V15","V16","V17","V18","V19","V20",
+                  "V21","V22","V23","V24","V25","V26","V27","V28"]
+
+  # Temporal parameters (Approach B)
+  time_window_seconds: 7200            # 2 hours max gap between connected transactions
+  time_column: "Time"
+
+  # Ring detection
+  min_ring_size: 3                     # minimum nodes to qualify as a fraud ring
+
+  # Node metadata
+  amount_column: "Amount"
+  label_column: "Class"
 
 # --- Phase 5: Model Training ---
 model:
