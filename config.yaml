@@ -128,12 +128,13 @@ api:
   model_path: "models/best_model.pkl"
   explainer_path: "models/shap_explainer.pkl"
   scaler_path: "models/scaler.pkl"
-  cors_origins: ["http://localhost:8501"]
+  # cors_origins: ["http://localhost:8501"]
+  cors_origins: ["http://localhost:8501", "http://localhost:8520"]
 
 # --- Phase 9: Dashboard ---
 dashboard:
   title: "Fraud Detection Command Center"
-  port: 8501
+  port: 8520
   api_url: "http://localhost:8000"
 
 # --- Phase 10: Human Feedback & CI/CD ---
