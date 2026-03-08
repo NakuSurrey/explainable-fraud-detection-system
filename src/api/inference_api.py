@@ -80,6 +80,19 @@ except ImportError as e:
     logger.error(f"Missing dependency: {e}. Run: pip install dill")
     raise
 
+from src.feedback.feedback_manager import (
+    generate_transaction_id,
+    init_db,
+    save_feedback,
+    get_feedback_history,
+    get_feedback_by_id,
+    get_feedback_by_transaction,
+    update_feedback,
+    delete_feedback,
+    export_corrections,
+    check_retrain_threshold,
+    get_feedback_stats,
+)
 
 # ============================================================
 # 1. PYDANTIC MODELS (Request / Response Schemas)
@@ -191,6 +204,53 @@ class ModelInfoResponse(BaseModel):
     model_comparison: Dict[str, Any]
     config: Dict[str, Any]
 
+class FeedbackInput(BaseModel):
+    """Input for submitting investigator feedback."""
+    features: Dict[str, float] = Field(
+        ...,
+        description="Transaction features used to generate the transaction_id hash."
+    )
+    original_probability: float = Field(
+        ...,
+        description="Model's original fraud probability (0.0 to 1.0)."
+    )
+    original_risk_level: str = Field(
+        ...,
+        description="Model's original risk classification (LOW/MEDIUM/HIGH/CRITICAL)."
+    )
+    original_is_flagged: bool = Field(
+        ...,
+        description="Whether the model flagged this transaction."
+    )
+    correction_type: str = Field(
+        ...,
+        description="Investigator's correction: 'confirmed_fraud' or 'false_positive'."
+    )
+    investigator_notes: str = Field(
+        default="",
+        description="Optional notes from the investigator."
+    )
+
+
+class FeedbackUpdateInput(BaseModel):
+    """Input for updating existing feedback."""
+    correction_type: Optional[str] = Field(
+        default=None,
+        description="New correction type: 'confirmed_fraud' or 'false_positive'."
+    )
+    investigator_notes: Optional[str] = Field(
+        default=None,
+        description="Updated investigator notes."
+    )
+
+
+class FeedbackResponse(BaseModel):
+    """Response after saving feedback."""
+    success: bool
+    message: str
+    feedback_id: int
+    transaction_id: str
+    retrain_status: Dict[str, Any]
 
 # ============================================================
 # 2. MODEL LOADER (loads all artifacts at startup)
@@ -663,6 +723,8 @@ async def startup_load_models():
         log_phase_start("Phase 8: Inference API")
         model_service.load_all()
         log_phase_end("Phase 8: Inference API", status="SUCCESS")
+        # Initialize feedback database (Phase 10)
+        init_db()
     except Exception as e:
         logger.error(f"Failed to load models at startup: {e}")
         logger.error(traceback.format_exc())
@@ -903,6 +965,122 @@ async def get_sample_transaction():
         "features": sample,
     }
 
+# ============================================================
+# 5b. FEEDBACK ENDPOINTS (Phase 10)
+# ============================================================
+
+@app.post("/feedback", response_model=FeedbackResponse, tags=["Feedback"])
+async def submit_feedback(feedback: FeedbackInput):
+    """
+    Submit investigator feedback on a prediction.
+
+    Generates a transaction_id from the feature hash, saves the
+    correction to SQLite, and checks if the retrain threshold
+    has been reached.
+    """
+    try:
+        # Generate deterministic transaction ID from features
+        transaction_id = generate_transaction_id(feedback.features)
+
+        # Save to database
+        record = save_feedback(
+            transaction_id=transaction_id,
+            original_probability=feedback.original_probability,
+            original_risk_level=feedback.original_risk_level,
+            original_is_flagged=feedback.original_is_flagged,
+            correction_type=feedback.correction_type,
+            investigator_notes=feedback.investigator_notes,
+        )
+
+        # Check retrain threshold
+        retrain_status = check_retrain_threshold()
+
+        logger.info(
+            f"Feedback submitted -- id={record['id']}, "
+            f"txn={transaction_id[:8]}..., "
+            f"type={feedback.correction_type}, "
+            f"retrain={'RECOMMENDED' if retrain_status['retrain_recommended'] else 'not yet'}"
+        )
+
+        return FeedbackResponse(
+            success=True,
+            message=f"Feedback recorded as {feedback.correction_type}.",
+            feedback_id=record["id"],
+            transaction_id=transaction_id,
+            retrain_status=retrain_status,
+        )
+
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except Exception as e:
+        logger.error(f"Feedback submission error: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to save feedback: {str(e)}")
+
+
+@app.get("/feedback/history", tags=["Feedback"])
+async def feedback_history(
+    limit: int = 50,
+    offset: int = 0,
+    correction_type: Optional[str] = None,
+):
+    """
+    Retrieve feedback history with pagination.
+
+    Query parameters:
+        limit: Max records to return (default 50)
+        offset: Records to skip (for pagination)
+        correction_type: Filter by 'confirmed_fraud' or 'false_positive'
+    """
+    try:
+        result = get_feedback_history(
+            limit=limit,
+            offset=offset,
+            correction_type=correction_type,
+        )
+        return result
+    except Exception as e:
+        logger.error(f"Feedback history error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/feedback/stats", tags=["Feedback"])
+async def feedback_statistics():
+    """
+    Get summary statistics of all feedback.
+
+    Returns total count, breakdown by type, average probabilities,
+    and date range of submissions.
+    """
+    try:
+        stats = get_feedback_stats()
+        retrain = check_retrain_threshold()
+        return {
+            "stats": stats,
+            "retrain_status": retrain,
+        }
+    except Exception as e:
+        logger.error(f"Feedback stats error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/feedback/export", tags=["Feedback"])
+async def feedback_export():
+    """
+    Export all feedback corrections to CSV.
+
+    This is a manual operation -- the CSV is written to the path
+    defined in config.yaml (data/feedback/corrections_export.csv).
+    """
+    try:
+        result = export_corrections()
+        return {
+            "success": True,
+            "message": f"Exported {result['total_records']} records.",
+            **result,
+        }
+    except Exception as e:
+        logger.error(f"Feedback export error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 # ============================================================
 # 6. MAIN ENTRY POINT

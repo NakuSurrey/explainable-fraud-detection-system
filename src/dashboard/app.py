@@ -1,7 +1,7 @@
 """
 Fraud Detection Command Center — Streamlit Dashboard
 =====================================================
-Phase 9: THE FRONT DESK
+Phase 10: THE SENTINEL (Human-in-the-Loop)
 
 Usage:
     # Terminal 1: python -m src.api.inference_api
@@ -20,7 +20,7 @@ if _PROJECT_ROOT not in sys.path:
 from src.utils.logger import load_config, get_logger, resolve_path
 
 config = load_config()
-logger = get_logger("phase9.dashboard")
+logger = get_logger("phase10.dashboard")
 API_URL = config["dashboard"]["api_url"]
 DASHBOARD_TITLE = config["dashboard"]["title"]
 
@@ -174,7 +174,6 @@ def render_comparison_table(comparison):
 
     rows_html = ""
     for label, xv, lv, key in metrics_rows:
-        # Highlight winner column for AUPRC row
         xgb_style = ""
         lgb_style = ""
         if key == "auprc":
@@ -238,6 +237,52 @@ def predict_lime(features_dict):
     except Exception as e:
         logger.error(f"LIME predict failed: {e}"); return None
 
+# ---------------------------------------------------------------------------
+# PHASE 10: FEEDBACK HELPER FUNCTIONS
+# ---------------------------------------------------------------------------
+def submit_feedback(features_dict, prediction_result, correction_type, notes=""):
+    """Submit investigator feedback via POST /feedback."""
+    try:
+        payload = {
+            "features": features_dict,
+            "original_probability": prediction_result.get("fraud_probability", 0),
+            "original_risk_level": prediction_result.get("risk_level", "UNKNOWN"),
+            "original_is_flagged": prediction_result.get("is_flagged", False),
+            "correction_type": correction_type,
+            "investigator_notes": notes,
+        }
+        r = requests.post(f"{API_URL}/feedback", json=payload, timeout=10)
+        if r.status_code == 200:
+            return r.json()
+        logger.warning(f"Feedback submission returned {r.status_code}")
+        return None
+    except Exception as e:
+        logger.error(f"Feedback submission failed: {e}")
+        return None
+
+
+def get_feedback_history_from_api(limit=20):
+    """Fetch feedback history from GET /feedback/history."""
+    try:
+        r = requests.get(f"{API_URL}/feedback/history", params={"limit": limit}, timeout=10)
+        if r.status_code == 200:
+            return r.json()
+        return None
+    except Exception:
+        return None
+
+
+def get_feedback_stats_from_api():
+    """Fetch feedback stats from GET /feedback/stats."""
+    try:
+        r = requests.get(f"{API_URL}/feedback/stats", timeout=10)
+        if r.status_code == 200:
+            return r.json()
+        return None
+    except Exception:
+        return None
+
+
 def load_graph_summary():
     """Load graphs/graph_summary.json for network stats."""
     try:
@@ -281,7 +326,6 @@ def build_network_viz_html(edges, rings_data):
     if not edges:
         return None
 
-    # Collect unique nodes and assign them to rings
     ring_membership = {}
     if rings_data:
         for ring in rings_data.get("rings", []):
@@ -292,7 +336,6 @@ def build_network_viz_html(edges, rings_data):
     ring_colors = {"RING_001": "#dc2626", "RING_002": "#2563eb", "RING_003": "#d97706"}
     default_color = "#94a3b8"
 
-    # Build nodes
     all_nodes = set()
     for e in edges:
         all_nodes.add(e.get("source", ""))
@@ -301,7 +344,6 @@ def build_network_viz_html(edges, rings_data):
     node_list = sorted(all_nodes)
     node_index = {n: i for i, n in enumerate(node_list)}
 
-    # Build nodes JS array
     nodes_js_items = []
     for n in node_list:
         rid = ring_membership.get(n, "")
@@ -310,7 +352,6 @@ def build_network_viz_html(edges, rings_data):
         ring_label = rid if rid else "Isolated"
         nodes_js_items.append(f'{{id:{node_index[n]},label:"{label}",ring:"{ring_label}",color:"{color}",x:Math.random()*800,y:Math.random()*500,vx:0,vy:0}}')
 
-    # Build edges JS array (limit for performance)
     edge_limit = min(len(edges), 300)
     edges_js_items = []
     for e in edges[:edge_limit]:
@@ -355,9 +396,7 @@ var ctx=canvas.getContext('2d');
 var tt=document.getElementById('tt');
 var drag=null,hoverNode=null,offsetX=0,offsetY=0;
 
-// Simple force simulation
 function simulate(){{
-  // Repulsion between nodes
   for(var i=0;i<nodes.length;i++){{
     for(var j=i+1;j<nodes.length;j++){{
       var dx=nodes[j].x-nodes[i].x;
@@ -368,7 +407,6 @@ function simulate(){{
       nodes[j].vx+=dx/d*f;nodes[j].vy+=dy/d*f;
     }}
   }}
-  // Attraction along edges
   for(var i=0;i<edges.length;i++){{
     var s=nodes[edges[i].source],t=nodes[edges[i].target];
     var dx=t.x-s.x,dy=t.y-s.y;
@@ -377,7 +415,6 @@ function simulate(){{
     s.vx+=dx/d*f;s.vy+=dy/d*f;
     t.vx-=dx/d*f;t.vy-=dy/d*f;
   }}
-  // Center gravity
   for(var i=0;i<nodes.length;i++){{
     nodes[i].vx+=(460-nodes[i].x)*0.001;
     nodes[i].vy+=(240-nodes[i].y)*0.001;
@@ -390,13 +427,11 @@ function simulate(){{
 
 function draw(){{
   ctx.clearRect(0,0,920,480);
-  // Draw edges
   ctx.strokeStyle='rgba(200,210,220,0.3)';ctx.lineWidth=0.5;
   for(var i=0;i<edges.length;i++){{
     var s=nodes[edges[i].source],t=nodes[edges[i].target];
     ctx.beginPath();ctx.moveTo(s.x,s.y);ctx.lineTo(t.x,t.y);ctx.stroke();
   }}
-  // Draw nodes
   for(var i=0;i<nodes.length;i++){{
     var n=nodes[i];
     var r=n.ring!=='Isolated'?6:4;
@@ -412,11 +447,9 @@ function draw(){{
 
 function tick(){{simulate();draw();requestAnimationFrame(tick);}}
 
-// Run initial simulation steps for layout
 for(var s=0;s<80;s++)simulate();
 tick();
 
-// Mouse interaction
 canvas.addEventListener('mousemove',function(e){{
   var rect=canvas.getBoundingClientRect();
   var mx=e.clientX-rect.left,my=e.clientY-rect.top;
@@ -464,7 +497,6 @@ def render_ring_details(rings_data):
         time_span = ring.get("time_span_seconds", 0)
         avg_sim = ring.get("avg_similarity", 0)
 
-        # Color based on size
         if size >= 50: border_color = "#dc2626"; severity = "HIGH RISK"
         elif size >= 10: border_color = "#d97706"; severity = "MEDIUM RISK"
         else: border_color = "#2563eb"; severity = "MONITORED"
@@ -620,6 +652,7 @@ if "transaction_features" not in st.session_state: st.session_state.transaction_
 if "prediction_result" not in st.session_state: st.session_state.prediction_result = None
 if "lime_result" not in st.session_state: st.session_state.lime_result = None
 if "input_mode" not in st.session_state: st.session_state.input_mode = "welcome"
+if "feedback_submitted" not in st.session_state: st.session_state.feedback_submitted = None
 
 # ---------------------------------------------------------------------------
 # API CHECK
@@ -662,14 +695,14 @@ with st.sidebar:
             s = get_sample_transaction()
             if s:
                 st.session_state.transaction_features=s; st.session_state.prediction_result=None
-                st.session_state.lime_result=None; st.session_state.input_mode="input"; st.rerun()
+                st.session_state.lime_result=None; st.session_state.feedback_submitted=None; st.session_state.input_mode="input"; st.rerun()
         if st.button("🔄 Reset Dashboard", use_container_width=True):
             st.session_state.transaction_features=None; st.session_state.prediction_result=None
-            st.session_state.lime_result=None; st.session_state.input_mode="welcome"; st.rerun()
+            st.session_state.lime_result=None; st.session_state.feedback_submitted=None; st.session_state.input_mode="welcome"; st.rerun()
         if st.session_state.input_mode == "results":
             if st.button("✏️ Edit & Re-analyze", use_container_width=True):
                 st.session_state.prediction_result=None; st.session_state.lime_result=None
-                st.session_state.input_mode="input"; st.rerun()
+                st.session_state.feedback_submitted=None; st.session_state.input_mode="input"; st.rerun()
 
     st.markdown("---")
     st.markdown("#### 📋 Risk Levels")
@@ -677,7 +710,7 @@ with st.sidebar:
         th={"low":"< 20%","medium":"20–49%","high":"50–79%","critical":"≥ 80%"}
         st.markdown(f'<span class="risk-badge {lvl}">{lbl}</span> &nbsp; {th[lvl]}', unsafe_allow_html=True)
     st.markdown("---")
-    st.caption(f"Dashboard v1.0 · Port {config['dashboard']['port']}")
+    st.caption(f"Dashboard v1.1 · Port {config['dashboard']['port']}")
 
 # ---------------------------------------------------------------------------
 # TABS
@@ -741,6 +774,7 @@ with tab_analysis:
                         if result:
                             st.session_state.prediction_result=result
                             st.session_state.lime_result=None
+                            st.session_state.feedback_submitted=None
                             st.session_state.input_mode="results"; st.rerun()
                         else: st.error("Prediction failed.")
 
@@ -800,7 +834,6 @@ with tab_analysis:
                 "around this specific prediction. Click below to generate."
             )
 
-            # Check if LIME result already fetched
             if st.session_state.lime_result is not None:
                 lime_data = st.session_state.lime_result
                 lime_explanations = lime_data.get("lime_explanation", [])
@@ -808,7 +841,6 @@ with tab_analysis:
                 lime_risk = lime_data.get("risk_level", risk_level)
                 lime_summary = lime_data.get("plain_english_summary", "")
 
-                # LIME KPI row
                 lk1, lk2, lk3 = st.columns(3)
                 with lk1:
                     st.metric("LIME Probability", f"{lime_prob:.1%}")
@@ -823,7 +855,6 @@ with tab_analysis:
                 render_lime_chart(lime_explanations)
 
             else:
-                # Button to trigger LIME (it's slower, so on-demand)
                 if st.button("🧪 Generate LIME Explanation", use_container_width=True):
                     features = st.session_state.transaction_features
                     if features:
@@ -837,13 +868,110 @@ with tab_analysis:
                     else:
                         st.warning("No transaction features available.")
 
+        # ============================================================
+        # PHASE 10: INVESTIGATOR FEEDBACK PANEL
+        # ============================================================
+        st.markdown("")
+        st.markdown('<div class="section-header">📝 Investigator Feedback</div>', unsafe_allow_html=True)
+
+        if st.session_state.feedback_submitted:
+            fb = st.session_state.feedback_submitted
+            retrain = fb.get("retrain_status", {})
+            correction_label = fb.get("message", "Feedback recorded.")
+            remaining = retrain.get("remaining", "?")
+            total_corr = retrain.get("total_corrections", 0)
+            threshold_val = retrain.get("threshold", 100)
+
+            if retrain.get("retrain_recommended", False):
+                st.success(f"✅ {correction_label} Retrain threshold REACHED ({total_corr}/{threshold_val} corrections). Consider retraining the model.")
+            else:
+                st.success(f"✅ {correction_label} ({total_corr}/{threshold_val} corrections — {remaining} more until retrain)")
+        else:
+            st.markdown(
+                '<div class="info-panel">'
+                'As an investigator, you can override the model\'s decision. '
+                'Your feedback is stored and used to improve future model versions.'
+                '</div>',
+                unsafe_allow_html=True,
+            )
+
+            fb_col1, fb_col2 = st.columns(2)
+            with fb_col1:
+                feedback_notes = st.text_area(
+                    "Investigator Notes (optional)",
+                    placeholder="E.g., Customer confirmed this purchase. / Matches known fraud pattern.",
+                    height=80,
+                    key="fb_notes",
+                )
+            with fb_col2:
+                st.markdown("")
+                st.markdown("")
+                btn_col1, btn_col2 = st.columns(2)
+                with btn_col1:
+                    if st.button("✅ Confirmed Fraud", use_container_width=True, type="primary"):
+                        features = st.session_state.transaction_features
+                        if features and result:
+                            with st.spinner("Submitting feedback..."):
+                                fb_result = submit_feedback(features, result, "confirmed_fraud", feedback_notes)
+                                if fb_result and fb_result.get("success"):
+                                    st.session_state.feedback_submitted = fb_result
+                                    st.rerun()
+                                else:
+                                    st.error("Failed to submit feedback. Check API logs.")
+                with btn_col2:
+                    if st.button("❌ False Positive", use_container_width=True):
+                        features = st.session_state.transaction_features
+                        if features and result:
+                            with st.spinner("Submitting feedback..."):
+                                fb_result = submit_feedback(features, result, "false_positive", feedback_notes)
+                                if fb_result and fb_result.get("success"):
+                                    st.session_state.feedback_submitted = fb_result
+                                    st.rerun()
+                                else:
+                                    st.error("Failed to submit feedback. Check API logs.")
+
+        # Feedback History (collapsible)
+        with st.expander("📜 Recent Feedback History", expanded=False):
+            history = get_feedback_history_from_api(limit=10)
+            if history and history.get("records"):
+                records = history["records"]
+                st.caption(f"Showing {len(records)} of {history.get('total', 0)} total corrections")
+                for rec in records:
+                    corr = rec.get("correction_type", "?")
+                    corr_icon = "🔴 Confirmed Fraud" if corr == "confirmed_fraud" else "🟢 False Positive"
+                    orig_prob = rec.get("original_probability", 0)
+                    orig_risk = rec.get("original_risk_level", "?")
+                    notes = rec.get("investigator_notes", "")
+                    ts = rec.get("created_at", "?")
+                    txn_short = rec.get("transaction_id", "?")[:12] + "..."
+
+                    notes_display = f" — \"{notes}\"" if notes else ""
+                    st.markdown(
+                        f"**{corr_icon}** | Txn: `{txn_short}` | "
+                        f"Original: {orig_prob:.1%} ({orig_risk}) | "
+                        f"{ts[:19]}{notes_display}"
+                    )
+            else:
+                st.caption("No feedback recorded yet. Submit your first correction above.")
+
+            # Stats
+            stats_data = get_feedback_stats_from_api()
+            if stats_data and stats_data.get("stats", {}).get("total", 0) > 0:
+                s = stats_data["stats"]
+                r = stats_data.get("retrain_status", {})
+                st.markdown("---")
+                sc1, sc2, sc3, sc4 = st.columns(4)
+                with sc1: st.metric("Total Corrections", s.get("total", 0))
+                with sc2: st.metric("Confirmed Fraud", s.get("confirmed_fraud", 0))
+                with sc3: st.metric("False Positives", s.get("false_positive", 0))
+                with sc4: st.metric("Until Retrain", r.get("remaining", "?"))
+
 # ---------------------------------------------------------------------------
 # TAB: Fraud Ring Network
 # ---------------------------------------------------------------------------
 with tab_network:
     st.markdown('<div class="section-header">🕸️ Fraud Ring Network Visualization</div>', unsafe_allow_html=True)
 
-    # Load graph data
     graph_summary = load_graph_summary()
     rings_data = load_fraud_rings()
     edge_data = load_edge_list()
@@ -851,7 +979,6 @@ with tab_network:
     if graph_summary is None:
         st.markdown('<div class="info-panel">⚠️ Graph data not found. Run Phase 4 first: <code>python -m src.graph_analytics.graph_builder</code></div>', unsafe_allow_html=True)
     else:
-        # Network Overview KPIs
         gs = graph_summary.get("graph_stats", {})
         rs = graph_summary.get("ring_stats", {})
 
@@ -870,7 +997,6 @@ with tab_network:
 
         st.markdown("")
 
-        # Strategy info
         strategy = graph_summary.get("strategy", "unknown")
         params = graph_summary.get("parameters", {})
         st.markdown(
@@ -883,7 +1009,6 @@ with tab_network:
             unsafe_allow_html=True,
         )
 
-        # Interactive Network Graph
         if edge_data:
             st.markdown('<div class="section-header">🌐 Interactive Network Graph</div>', unsafe_allow_html=True)
             st.caption("Drag nodes to explore. Hover for details. Scroll to zoom. Clusters = fraud rings.")
@@ -893,7 +1018,6 @@ with tab_network:
         else:
             st.markdown('<div class="info-panel">Edge list not found at graphs/fraud_edges.csv. Run Phase 4 first.</div>', unsafe_allow_html=True)
 
-        # Ring Detail Cards
         if rings_data:
             st.markdown('<div class="section-header">🔎 Detected Fraud Rings</div>', unsafe_allow_html=True)
             render_ring_details(rings_data)
@@ -910,7 +1034,6 @@ with tab_performance:
     if metrics_data is None:
         st.markdown('<div class="info-panel">⚠️ Metrics data not found. Run Phase 5 first: <code>python -m src.models.model_training</code></div>', unsafe_allow_html=True)
     else:
-        # Winner banner
         if comparison_data:
             winner = comparison_data.get("winner", "?")
             winning_auprc = comparison_data.get("winning_auprc", 0)
@@ -925,7 +1048,6 @@ with tab_performance:
                 unsafe_allow_html=True,
             )
 
-        # Performance KPIs
         xgb = metrics_data.get("xgboost", {})
         lgb = metrics_data.get("lightgbm", {})
 
@@ -941,7 +1063,6 @@ with tab_performance:
             xgb_rec = xgb.get("default_threshold", {}).get("recall", 0)
             st.markdown(f'<div class="kpi-card navy"><div class="kpi-label">XGBoost Recall</div><div class="kpi-value">{xgb_rec:.1%}</div><div class="kpi-sub">At default threshold</div></div>', unsafe_allow_html=True)
 
-        # Head-to-Head Comparison Table
         st.markdown("")
         st.markdown('<div class="section-header">⚔️ Head-to-Head: XGBoost vs LightGBM</div>', unsafe_allow_html=True)
 
@@ -950,7 +1071,6 @@ with tab_performance:
         else:
             st.markdown('<div class="info-panel">Comparison data not found at models/model_comparison.json</div>', unsafe_allow_html=True)
 
-        # Key Insights
         st.markdown("")
         st.markdown('<div class="section-header">💡 Key Insights</div>', unsafe_allow_html=True)
 
@@ -976,7 +1096,6 @@ with tab_performance:
                 unsafe_allow_html=True,
             )
 
-        # Stress Test Summary
         st.markdown("")
         st.markdown('<div class="section-header">🛡️ Adversarial Stress Test Results</div>', unsafe_allow_html=True)
 
@@ -1008,5 +1127,5 @@ with tab_performance:
 # ---------------------------------------------------------------------------
 # FOOTER
 # ---------------------------------------------------------------------------
-st.markdown('<div class="app-footer">Explainable Fraud Detection System · Phase 9: Streamlit Dashboard · Built with transparency, auditability, and FCA compliance in mind</div>', unsafe_allow_html=True)
+st.markdown('<div class="app-footer">Explainable Fraud Detection System · Phase 10: Human-in-the-Loop & CI/CD · Built with transparency, auditability, and FCA compliance in mind</div>', unsafe_allow_html=True)
 logger.info("Dashboard page loaded successfully")
