@@ -1,0 +1,84 @@
+# ============================================================================
+# EXPLAINABLE FRAUD DETECTION SYSTEM — DOCKER COMPOSE
+# ============================================================================
+# Orchestrates both services:
+#   1. API (FastAPI)      — port 8000
+#   2. Dashboard (Streamlit) — port 8520
+#
+# Usage:
+#   docker-compose build        # Build both images
+#   docker-compose up           # Start both services
+#   docker-compose up -d        # Start in background (detached)
+#   docker-compose down         # Stop both services
+#   docker-compose logs -f      # Follow logs from both services
+#   docker-compose logs -f api  # Follow API logs only
+# ============================================================================
+
+version: "3.8"
+
+services:
+  # -------------------------------------------------------
+  # SERVICE 1: FastAPI Inference API
+  # -------------------------------------------------------
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: fraud-detection-api
+    ports:
+      - "8000:8000"
+    volumes:
+      # Persist feedback database across container restarts
+      - feedback-data:/app/data/feedback
+      # Persist logs
+      - api-logs:/app/logs
+    environment:
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+      retries: 3
+
+  # -------------------------------------------------------
+  # SERVICE 2: Streamlit Dashboard
+  # -------------------------------------------------------
+  dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile.dashboard
+    container_name: fraud-detection-dashboard
+    ports:
+      - "8520:8520"
+    volumes:
+      # Persist logs
+      - dashboard-logs:/app/logs
+    environment:
+      - PYTHONUNBUFFERED=1
+      # Override the API URL so dashboard talks to the API container
+      # instead of localhost (which won't work between containers)
+      - API_URL=http://api:8000
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8520/_stcore/health')"]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 3
+
+# -------------------------------------------------------
+# NAMED VOLUMES
+# -------------------------------------------------------
+# These persist data even when containers are removed
+volumes:
+  feedback-data:
+    driver: local
+  api-logs:
+    driver: local
+  dashboard-logs:
+    driver: local

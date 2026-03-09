@@ -1,0 +1,18 @@
+# ============================================================================
+# EXPLAINABLE FRAUD DETECTION SYSTEM — DASHBOARD DEPENDENCIES
+# ============================================================================
+# Lightweight subset — NO ML libraries needed
+# The dashboard only talks to the API over HTTP
+# ============================================================================
+# Dashboard
+streamlit==1.31.1
+plotly==5.19.0
+# HTTP client (to call the API)
+requests==2.31.0
+# Config
+pyyaml==6.0.1
+# Visualization (used by Streamlit components)
+matplotlib==3.8.3
+# Utilities
+numpy==1.26.4
+pandas==2.2.1

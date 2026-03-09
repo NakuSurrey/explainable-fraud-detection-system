@@ -67,7 +67,7 @@ XGBoost and LightGBM were chosen because their inference latency is measured in 
 | API | FastAPI | Modern async framework with auto-generated OpenAPI documentation |
 | CI/CD | GitHub Actions | Automated testing on every push |
 | Containerization | Docker | Full reproducibility across environments |
-| Cloud Deployment | Microsoft Azure | Enterprise-grade hosting with free student credits |
+| Cloud Deployment | DigitalOcean | Cloud hosting with Docker deployment | Enterprise-grade hosting with free student credits |
 | Configuration | Single config.yaml | Centralized configuration — no hardcoded paths anywhere |
 | Logging | Python logging module | Centralized pipeline.log — no print() statements |
 
@@ -293,22 +293,22 @@ python -m src.preprocessing.data_ingestion
 python -m src.preprocessing.data_engineering
 
 # Phase 4: Generate fraud ring graphs
-python -m src.graph_analytics.graph_generator
+python -m src.graph_analytics.graph_builder
 
 # Phase 5: Train and evaluate models
-python -m src.models.train
+python -m src.models.model_training
 
 # Phase 6: Run adversarial stress tests
-python -m src.stress_testing.adversarial_test
+python -m src.testing.stress_test
 
 # Phase 7: Generate SHAP and LIME explainers
-python -m src.explainability.generate_explainers
+python -m src.explainability.xai_engine
 
 # Phase 8: Start the inference API
-uvicorn src.api.server:app --host 0.0.0.0 --port 8000
+python -m src.api.inference_api
 
 # Phase 9: Launch the dashboard
-streamlit run src/dashboard/app.py
+streamlit run src/dashboard/app.py --server.port 8520
 
 # Run all tests
 python -m pytest tests/ -v

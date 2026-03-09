@@ -1,0 +1,54 @@
+# ============================================================================
+# EXPLAINABLE FRAUD DETECTION SYSTEM — DASHBOARD SERVICE DOCKERFILE
+# ============================================================================
+# Serves the Streamlit Dashboard (Phase 9 + Phase 10 feedback UI)
+# Lightweight — contains NO model files or ML code
+# Communicates with the API service over the network
+# Port: 8520
+# ============================================================================
+
+FROM python:3.10-slim
+
+# --- System setup ---
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+WORKDIR /app
+
+# --- Install only dashboard-relevant dependencies ---
+# Instead of installing ALL requirements, we install a focused subset
+# to keep the image small (no XGBoost, LightGBM, SHAP, etc.)
+COPY requirements-dashboard.txt .
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements-dashboard.txt
+
+# --- Copy source code ---
+COPY src/ src/
+COPY config.yaml .
+
+# --- Copy graph data (needed for Fraud Ring Network tab) ---
+COPY graphs/ graphs/
+
+# --- Copy report files (needed for Model Performance tab) ---
+COPY reports/ reports/
+
+# --- Copy model metadata (needed for Model Performance comparison) ---
+COPY models/metrics.json models/metrics.json
+COPY models/model_comparison.json models/model_comparison.json
+# --- Create logs directory ---
+RUN mkdir -p logs
+
+# --- Expose Dashboard port ---
+EXPOSE 8520
+
+# --- Health check ---
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8520/_stcore/health')" || exit 1
+
+# --- Start the Dashboard ---
+# Matches local command: streamlit run src/dashboard/app.py --server.port 8520
+CMD ["streamlit", "run", "src/dashboard/app.py", \
+    "--server.port=8520", \
+    "--server.address=0.0.0.0", \
+    "--server.headless=true", \
+    "--browser.gatherUsageStats=false"]

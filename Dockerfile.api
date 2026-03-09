@@ -1,0 +1,71 @@
+# ============================================================================
+# EXPLAINABLE FRAUD DETECTION SYSTEM — API SERVICE DOCKERFILE
+# ============================================================================
+# Serves the FastAPI inference API (Phase 8 + Phase 10 feedback endpoints)
+# Contains: trained models, SHAP/LIME explainers, scaler, graph data
+# Port: 8000
+# ============================================================================
+
+FROM python:3.10-slim
+
+# --- System setup ---
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+WORKDIR /app
+
+# --- Install system dependencies ---
+# libgomp1 is required by LightGBM and XGBoost
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends libgomp1 && \
+    rm -rf /var/lib/apt/lists/*
+
+# --- Install Python dependencies ---
+COPY requirements.txt .
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt && \
+    pip install --no-cache-dir dill
+
+# --- Copy source code ---
+COPY src/ src/
+COPY config.yaml .
+
+# --- Copy model artifacts (excluded from .gitignore, must exist locally) ---
+# These are required for the API to function:
+#   - best_model.pkl          (~150MB, XGBoost trained model)
+#   - shap_explainer.pkl      (~200MB, SHAP TreeExplainer)
+#   - lime_explainer.pkl      (~100MB, LIME TabularExplainer, serialized with dill)
+#   - scaler.pkl              (~1MB, StandardScaler from Phase 3)
+#   - metrics.json            (model performance metrics)
+#   - model_comparison.json   (XGBoost vs LightGBM comparison)
+#   - xgboost_fraud_v1.pkl    (original XGBoost model)
+#   - lightgbm_fraud_v1.pkl   (original LightGBM model)
+COPY models/ models/
+
+# --- Copy data files needed at runtime ---
+# feature_names.json is required for prediction input validation
+COPY data/processed/feature_names.json data/processed/feature_names.json
+
+# --- Copy graph files (needed for /health and graph-related endpoints) ---
+COPY graphs/ graphs/
+
+# --- Copy report files (needed for stress test results endpoint) ---
+COPY reports/ reports/
+
+# --- Create feedback directory (SQLite DB created at runtime) ---
+RUN mkdir -p data/feedback
+
+# --- Create logs directory ---
+RUN mkdir -p logs
+
+# --- Expose API port ---
+EXPOSE 8000
+
+# --- Health check ---
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" || exit 1
+
+# --- Start the API server ---
+# Uses the same command as local development: python -m src.api.inference_api
+# The API module calls uvicorn.run() internally with host=0.0.0.0, port=8000
+CMD ["python", "-m", "src.api.inference_api"]

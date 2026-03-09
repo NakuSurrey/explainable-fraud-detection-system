@@ -21,7 +21,8 @@ from src.utils.logger import load_config, get_logger, resolve_path
 
 config = load_config()
 logger = get_logger("phase10.dashboard")
-API_URL = config["dashboard"]["api_url"]
+# API_URL = config["dashboard"]["api_url"]
+API_URL = os.environ.get("API_URL", config["dashboard"]["api_url"])
 DASHBOARD_TITLE = config["dashboard"]["title"]
 
 # ---------------------------------------------------------------------------
