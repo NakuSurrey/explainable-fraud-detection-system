@@ -262,8 +262,8 @@ In a live banking environment, fraud patterns evolve constantly. A model trained
 
 ```bash
 # Clone the repository
-git clone https://github.com/YOUR_USERNAME/fraud-detection-system.git
-cd fraud-detection-system
+git clone https://github.com/NakuSurrey/fraud-detection-system.git
+cd explainable-fraud-detection-system
 
 # Create and activate virtual environment
 python -m venv venv
