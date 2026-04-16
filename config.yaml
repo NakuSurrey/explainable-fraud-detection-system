@@ -158,3 +158,5 @@ monitoring:
   drift_check_interval_days: 7
   psi_threshold: 0.2
   auprc_decay_threshold: 0.05
+  db_path: "data/monitoring/predictions.db"
+  baseline_path: "models/prediction_baseline.json"

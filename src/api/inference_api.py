@@ -94,6 +94,15 @@ from src.feedback.feedback_manager import (
     get_feedback_stats,
 )
 
+from src.monitoring.prediction_monitor import (
+    init_monitoring_db,
+    log_prediction,
+    generate_drift_report,
+    get_monitoring_summary,
+    get_recent_predictions,
+    load_baseline,
+)
+
 # ============================================================
 # 1. PYDANTIC MODELS (Request / Response Schemas)
 # ============================================================
@@ -725,6 +734,8 @@ async def startup_load_models():
         log_phase_end("Phase 8: Inference API", status="SUCCESS")
         # Initialize feedback database (Phase 10)
         init_db()
+        # Initialize monitoring database (Phase 11)
+        init_monitoring_db()
     except Exception as e:
         logger.error(f"Failed to load models at startup: {e}")
         logger.error(traceback.format_exc())
@@ -809,6 +820,14 @@ async def predict(transaction: TransactionInput):
             transaction_id=txn_id,
         )
 
+        # logger.info(
+        #     f"Prediction #{model_service.prediction_count}: "
+        #     f"{result['risk_level']} "
+        #     f"(prob={result['fraud_probability']:.4f}, "
+        #     f"time={result['inference_time_ms']:.1f}ms)"
+        # )
+
+        # return PredictionResponse(**result)
         logger.info(
             f"Prediction #{model_service.prediction_count}: "
             f"{result['risk_level']} "
@@ -816,8 +835,15 @@ async def predict(transaction: TransactionInput):
             f"time={result['inference_time_ms']:.1f}ms)"
         )
 
-        return PredictionResponse(**result)
+        # silently log this prediction for drift monitoring (Phase 11)
+        log_prediction(
+            probability=result["fraud_probability"],
+            risk_level=result["risk_level"],
+            is_flagged=result["is_flagged"],
+            threshold_used=result["threshold_used"],
+        )
 
+        return PredictionResponse(**result)
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
     except Exception as e:
@@ -1081,7 +1107,74 @@ async def feedback_export():
     except Exception as e:
         logger.error(f"Feedback export error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+# ============================================================
+# 5c. MONITORING ENDPOINTS (Phase 11)
+# ============================================================
 
+@app.get("/monitoring/drift-report", tags=["Monitoring"])
+async def get_drift_report(
+    window: int = 500,
+    days: Optional[int] = None,
+):
+    """
+    Run a full prediction drift analysis.
+
+    Compares the distribution of recent predictions against the
+    training baseline using PSI (Population Stability Index).
+
+    Query parameters:
+        window: max number of recent predictions to analyze (default 500)
+        days: optional — only look at predictions from the last N days
+    """
+    try:
+        report = generate_drift_report(
+            prediction_window=window,
+            days=days,
+        )
+        return report
+    except Exception as e:
+        logger.error(f"Drift report error: {e}")
+        raise HTTPException(status_code=500, detail=f"Drift report failed: {str(e)}")
+
+
+@app.get("/monitoring/summary", tags=["Monitoring"])
+async def monitoring_summary():
+    """
+    Quick monitoring status check.
+
+    Returns whether baseline exists, how many predictions are logged,
+    and whether enough data exists for drift analysis.
+    Does NOT run the full PSI calculation — use /monitoring/drift-report for that.
+    """
+    try:
+        summary = get_monitoring_summary()
+        return summary
+    except Exception as e:
+        logger.error(f"Monitoring summary error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/monitoring/predictions", tags=["Monitoring"])
+async def recent_predictions(
+    limit: int = 50,
+    days: Optional[int] = None,
+):
+    """
+    Fetch recent prediction logs from the monitoring database.
+
+    Query parameters:
+        limit: max records to return (default 50)
+        days: optional — only return predictions from the last N days
+    """
+    try:
+        predictions = get_recent_predictions(limit=limit, days=days)
+        return {
+            "count": len(predictions),
+            "predictions": predictions,
+        }
+    except Exception as e:
+        logger.error(f"Prediction log error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 # ============================================================
 # 6. MAIN ENTRY POINT
 # ============================================================

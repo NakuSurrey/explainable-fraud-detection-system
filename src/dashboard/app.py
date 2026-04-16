@@ -1,7 +1,7 @@
 """
 Fraud Detection Command Center — Streamlit Dashboard
 =====================================================
-Phase 10: THE SENTINEL (Human-in-the-Loop)
+Phase 11: THE WATCHTOWER (Model Monitoring)
 
 Usage:
     # Terminal 1: python -m src.api.inference_api
@@ -20,8 +20,8 @@ if _PROJECT_ROOT not in sys.path:
 from src.utils.logger import load_config, get_logger, resolve_path
 
 config = load_config()
-logger = get_logger("phase10.dashboard")
-# API_URL = config["dashboard"]["api_url"]
+logger = get_logger("phase11.dashboard")
+# using environment variable so Docker/HuggingFace can override the API URL
 API_URL = os.environ.get("API_URL", config["dashboard"]["api_url"])
 DASHBOARD_TITLE = config["dashboard"]["title"]
 
@@ -277,6 +277,47 @@ def get_feedback_stats_from_api():
     """Fetch feedback stats from GET /feedback/stats."""
     try:
         r = requests.get(f"{API_URL}/feedback/stats", timeout=10)
+        if r.status_code == 200:
+            return r.json()
+        return None
+    except Exception:
+        return None
+
+
+# ---------------------------------------------------------------------------
+# PHASE 11: MONITORING HELPER FUNCTIONS
+# ---------------------------------------------------------------------------
+def get_monitoring_drift_report(window=500, days=None):
+    """Fetch drift report from GET /monitoring/drift-report."""
+    try:
+        params = {"window": window}
+        if days is not None:
+            params["days"] = days
+        r = requests.get(f"{API_URL}/monitoring/drift-report", params=params, timeout=15)
+        if r.status_code == 200:
+            return r.json()
+        logger.warning(f"Drift report returned {r.status_code}")
+        return None
+    except Exception as e:
+        logger.error(f"Drift report fetch failed: {e}")
+        return None
+
+
+def get_monitoring_summary_from_api():
+    """Fetch monitoring summary from GET /monitoring/summary."""
+    try:
+        r = requests.get(f"{API_URL}/monitoring/summary", timeout=10)
+        if r.status_code == 200:
+            return r.json()
+        return None
+    except Exception:
+        return None
+
+
+def get_monitoring_predictions(limit=50):
+    """Fetch recent prediction logs from GET /monitoring/predictions."""
+    try:
+        r = requests.get(f"{API_URL}/monitoring/predictions", params={"limit": limit}, timeout=10)
         if r.status_code == 200:
             return r.json()
         return None
@@ -553,6 +594,85 @@ def build_gauge_svg(probability, risk_level):
     gc = cm.get(risk_level,"#059669")
     return f'<svg width="240" height="140" viewBox="0 0 240 140"><path d="M {cx-r} {cy} A {r} {r} 0 0 1 {cx+r} {cy}" fill="none" stroke="#e2e8f0" stroke-width="{sw}" stroke-linecap="round"/><path d="M {cx-r} {cy} A {r} {r} 0 0 1 {cx+r} {cy}" fill="none" stroke="{gc}" stroke-width="{sw}" stroke-linecap="round" stroke-dasharray="{fl} {el}" style="filter:drop-shadow(0 0 6px {gc}40);"/><text x="{cx-r-5}" y="{cy+20}" font-size="11" fill="#94a3b8" text-anchor="middle" font-family="Inter,sans-serif">0%</text><text x="{cx}" y="18" font-size="11" fill="#94a3b8" text-anchor="middle" font-family="Inter,sans-serif">50%</text><text x="{cx+r+5}" y="{cy+20}" font-size="11" fill="#94a3b8" text-anchor="middle" font-family="Inter,sans-serif">100%</text></svg>'
 
+
+def build_psi_gauge_svg(psi_score, threshold=0.2):
+    """Build a half-circle PSI gauge — green/yellow/red based on drift level."""
+    # clamp PSI to max 0.5 for visual display (beyond 0.5 is extreme)
+    display_max = 0.5
+    clamped = min(psi_score, display_max)
+    fraction = clamped / display_max
+
+    # color: green < 0.1, yellow 0.1-0.2, red >= 0.2
+    if psi_score < 0.1:
+        gc = "#059669"
+    elif psi_score < threshold:
+        gc = "#d97706"
+    else:
+        gc = "#dc2626"
+
+    cx, cy, r = 120, 110, 90
+    sw = 16
+    al = math.pi * r
+    fl = al * fraction
+    el = al - fl
+
+    return f'<svg width="240" height="140" viewBox="0 0 240 140"><path d="M {cx-r} {cy} A {r} {r} 0 0 1 {cx+r} {cy}" fill="none" stroke="#e2e8f0" stroke-width="{sw}" stroke-linecap="round"/><path d="M {cx-r} {cy} A {r} {r} 0 0 1 {cx+r} {cy}" fill="none" stroke="{gc}" stroke-width="{sw}" stroke-linecap="round" stroke-dasharray="{fl} {el}" style="filter:drop-shadow(0 0 6px {gc}40);"/><text x="{cx-r-5}" y="{cy+20}" font-size="11" fill="#94a3b8" text-anchor="middle" font-family="Inter,sans-serif">0</text><text x="{cx}" y="18" font-size="11" fill="#94a3b8" text-anchor="middle" font-family="Inter,sans-serif">0.25</text><text x="{cx+r+5}" y="{cy+20}" font-size="11" fill="#94a3b8" text-anchor="middle" font-family="Inter,sans-serif">0.5</text></svg>'
+
+
+def render_drift_distribution_chart(report):
+    """Render baseline vs recent distribution bar chart via components.html."""
+    comparison = report.get("comparison", {})
+    bin_labels = comparison.get("bin_labels", [])
+    baseline_props = comparison.get("baseline_proportions", [])
+    recent_props = comparison.get("recent_proportions", [])
+
+    if not bin_labels or not baseline_props or not recent_props:
+        return
+
+    # find max proportion for scaling bar heights
+    max_prop = max(max(baseline_props), max(recent_props))
+    if max_prop == 0:
+        max_prop = 1
+
+    max_bar_height = 180
+
+    # build bars — paired baseline and recent for each bin
+    bars_html = ""
+    for i in range(len(bin_labels)):
+        bp = baseline_props[i] if i < len(baseline_props) else 0
+        rp = recent_props[i] if i < len(recent_props) else 0
+
+        bh = (bp / max_prop) * max_bar_height
+        rh = (rp / max_prop) * max_bar_height
+
+        bars_html += f"""
+        <div style="display:flex;flex-direction:column;align-items:center;gap:4px;flex:1;min-width:0;">
+            <div style="display:flex;align-items:flex-end;gap:3px;height:{max_bar_height}px;">
+                <div style="width:16px;height:{max(bh,2):.0f}px;background:#2563eb;border-radius:3px 3px 0 0;opacity:0.7;" title="Baseline: {bp:.4f}"></div>
+                <div style="width:16px;height:{max(rh,2):.0f}px;background:#dc2626;border-radius:3px 3px 0 0;opacity:0.7;" title="Recent: {rp:.4f}"></div>
+            </div>
+            <div style="font-size:0.6rem;color:#94a3b8;text-align:center;transform:rotate(-45deg);white-space:nowrap;">{bin_labels[i]}</div>
+        </div>
+        """
+
+    full_html = f"""<!DOCTYPE html><html><head>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>*{{margin:0;padding:0;box-sizing:border-box;}}body{{font-family:'Inter',sans-serif;background:#fff;padding:20px;}}</style>
+    </head><body>
+    <div style="font-size:0.95rem;font-weight:700;color:#0f172a;margin-bottom:4px;">Probability Distribution — Baseline vs Recent</div>
+    <div style="font-size:0.75rem;color:#475569;margin-bottom:16px;">Each pair shows the proportion of predictions falling in that probability bin.</div>
+    <div style="display:flex;gap:12px;margin-bottom:8px;font-size:0.72rem;color:#475569;">
+        <div style="display:flex;align-items:center;gap:5px;"><span style="width:12px;height:12px;background:#2563eb;border-radius:2px;display:inline-block;opacity:0.7;"></span>Baseline (training)</div>
+        <div style="display:flex;align-items:center;gap:5px;"><span style="width:12px;height:12px;background:#dc2626;border-radius:2px;display:inline-block;opacity:0.7;"></span>Recent (production)</div>
+    </div>
+    <div style="display:flex;align-items:flex-end;gap:8px;padding:12px 0;">
+        {bars_html}
+    </div>
+    </body></html>"""
+
+    components.html(full_html, height=320, scrolling=False)
+
+
 def render_shap_chart(shap_explanations):
     if not shap_explanations:
         st.markdown('<div class="info-panel">No SHAP explanations available.</div>', unsafe_allow_html=True)
@@ -711,12 +831,17 @@ with st.sidebar:
         th={"low":"< 20%","medium":"20–49%","high":"50–79%","critical":"≥ 80%"}
         st.markdown(f'<span class="risk-badge {lvl}">{lbl}</span> &nbsp; {th[lvl]}', unsafe_allow_html=True)
     st.markdown("---")
-    st.caption(f"Dashboard v1.1 · Port {config['dashboard']['port']}")
+    st.caption(f"Dashboard v1.2 · Port {config['dashboard']['port']}")
 
 # ---------------------------------------------------------------------------
-# TABS
+# TABS — added Model Monitoring as 4th tab (Phase 11)
 # ---------------------------------------------------------------------------
-tab_analysis, tab_network, tab_performance = st.tabs(["🔍  Transaction Analysis","🕸️  Fraud Ring Network","📊  Model Performance"])
+tab_analysis, tab_network, tab_performance, tab_monitoring = st.tabs([
+    "🔍  Transaction Analysis",
+    "🕸️  Fraud Ring Network",
+    "📊  Model Performance",
+    "📡  Model Monitoring",
+])
 
 # ---------------------------------------------------------------------------
 # TAB: Transaction Analysis
@@ -1126,7 +1251,245 @@ with tab_performance:
             st.markdown('<div class="info-panel">Stress test results not found. Run Phase 6 first.</div>', unsafe_allow_html=True)
 
 # ---------------------------------------------------------------------------
+# TAB: Model Monitoring (Phase 11 — THE WATCHTOWER)
+# ---------------------------------------------------------------------------
+with tab_monitoring:
+    st.markdown('<div class="section-header">📡 Model Monitoring — Prediction Drift Analysis</div>', unsafe_allow_html=True)
+
+    if not api_online:
+        st.markdown(
+            '<div class="info-panel">⚠️ <strong>Cannot fetch monitoring data</strong> — API offline.</div>',
+            unsafe_allow_html=True,
+        )
+    else:
+        # fetch monitoring summary first — fast, lightweight call
+        mon_summary = get_monitoring_summary_from_api()
+
+        if mon_summary is None:
+            st.markdown(
+                '<div class="info-panel">⚠️ Monitoring endpoints not available. '
+                'Make sure the API is running the Phase 11 version with monitoring endpoints.</div>',
+                unsafe_allow_html=True,
+            )
+        else:
+            # KPI row — monitoring status at a glance
+            total_logged = mon_summary.get("total_predictions_logged", 0)
+            baseline_exists = mon_summary.get("baseline_exists", False)
+            baseline_samples = mon_summary.get("baseline_samples", 0)
+            last_prediction = mon_summary.get("last_prediction_at", None)
+            ready = mon_summary.get("ready_for_drift_check", False)
+            min_needed = mon_summary.get("minimum_for_drift_check", 30)
+
+            mk1, mk2, mk3, mk4 = st.columns(4)
+            with mk1:
+                st.markdown(
+                    f'<div class="kpi-card blue"><div class="kpi-label">Predictions Logged</div>'
+                    f'<div class="kpi-value">{total_logged}</div>'
+                    f'<div class="kpi-sub">Minimum {min_needed} for drift check</div></div>',
+                    unsafe_allow_html=True,
+                )
+            with mk2:
+                bl_status = "Ready" if baseline_exists else "Missing"
+                bl_color = "#059669" if baseline_exists else "#dc2626"
+                st.markdown(
+                    f'<div class="kpi-card green"><div class="kpi-label">Baseline Status</div>'
+                    f'<div class="kpi-value" style="color:{bl_color};">{bl_status}</div>'
+                    f'<div class="kpi-sub">{baseline_samples:,} training samples</div></div>',
+                    unsafe_allow_html=True,
+                )
+            with mk3:
+                drift_ready_text = "Ready" if ready else "Not Yet"
+                drift_ready_color = "#059669" if ready else "#d97706"
+                st.markdown(
+                    f'<div class="kpi-card amber"><div class="kpi-label">Drift Check</div>'
+                    f'<div class="kpi-value" style="color:{drift_ready_color};">{drift_ready_text}</div>'
+                    f'<div class="kpi-sub">{"Enough data collected" if ready else f"Need {min_needed - total_logged} more predictions"}</div></div>',
+                    unsafe_allow_html=True,
+                )
+            with mk4:
+                last_ts = last_prediction[:19] if last_prediction else "None"
+                st.markdown(
+                    f'<div class="kpi-card navy"><div class="kpi-label">Last Prediction</div>'
+                    f'<div class="kpi-value" style="font-size:1rem;">{last_ts}</div>'
+                    f'<div class="kpi-sub">Most recent logged entry</div></div>',
+                    unsafe_allow_html=True,
+                )
+
+            st.markdown("")
+
+            # if not ready for drift check, show explanation
+            if not baseline_exists:
+                st.markdown(
+                    '<div class="info-panel">'
+                    '⚠️ <strong>No baseline found.</strong> Generate one by running: '
+                    '<code>python -m src.monitoring.prediction_monitor --generate-baseline</code>'
+                    '</div>',
+                    unsafe_allow_html=True,
+                )
+            elif not ready:
+                st.markdown(
+                    f'<div class="info-panel">'
+                    f'📊 <strong>Collecting predictions.</strong> {total_logged} of {min_needed} minimum '
+                    f'predictions logged. Keep using the system — every /predict call is automatically '
+                    f'recorded. Drift analysis will appear here once enough data is collected.'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+            else:
+                # ready for drift check — run the full report
+                st.markdown('<div class="section-header">🔬 Drift Analysis Report</div>', unsafe_allow_html=True)
+
+                drift_report = get_monitoring_drift_report(window=500)
+
+                if drift_report and drift_report.get("status") == "OK":
+                    drift = drift_report.get("drift_analysis", {})
+                    psi_score = drift.get("psi_score", 0)
+                    verdict = drift.get("verdict", "UNKNOWN")
+                    recommendation = drift.get("recommendation", "")
+                    psi_threshold = drift.get("threshold", 0.2)
+
+                    # verdict colors
+                    verdict_colors = {
+                        "NO_DRIFT": {"bg": "#d1fae5", "text": "#065f46", "g": "#059669", "label": "STABLE"},
+                        "MODERATE_DRIFT": {"bg": "#fef3c7", "text": "#92400e", "g": "#d97706", "label": "WATCH"},
+                        "SIGNIFICANT_DRIFT": {"bg": "#fecaca", "text": "#991b1b", "g": "#dc2626", "label": "ACTION NEEDED"},
+                    }
+                    vc = verdict_colors.get(verdict, verdict_colors["NO_DRIFT"])
+
+                    # PSI gauge + verdict side by side
+                    psi_col, verdict_col = st.columns([2, 3])
+                    with psi_col:
+                        psi_svg = build_psi_gauge_svg(psi_score, psi_threshold)
+                        st.markdown(
+                            f'<div class="gauge-wrapper">'
+                            f'<div class="gauge-title">PSI Score (Population Stability Index)</div>'
+                            f'<div class="gauge-svg-container">{psi_svg}</div>'
+                            f'<div class="gauge-value-large" style="color:{vc["g"]};">{psi_score:.4f}</div>'
+                            f'<div class="gauge-risk-label" style="background:{vc["bg"]};color:{vc["text"]};">{vc["label"]}</div>'
+                            f'<div class="gauge-decision-row">'
+                            f'<div class="gauge-decision-item">Threshold: {psi_threshold}</div>'
+                            f'<div class="gauge-decision-item">Verdict: {verdict}</div>'
+                            f'</div></div>',
+                            unsafe_allow_html=True,
+                        )
+                    with verdict_col:
+                        st.markdown('<div class="section-header">📋 Drift Verdict</div>', unsafe_allow_html=True)
+                        st.markdown(
+                            f'<div class="info-panel">{recommendation}</div>',
+                            unsafe_allow_html=True,
+                        )
+
+                        # show baseline vs recent stats
+                        baseline_info = drift_report.get("baseline", {})
+                        recent_info = drift_report.get("recent", {})
+                        mean_shift = drift_report.get("comparison", {}).get("mean_shift", 0)
+
+                        st.markdown("")
+                        sc1, sc2, sc3 = st.columns(3)
+                        with sc1:
+                            st.metric(
+                                "Baseline Mean Prob",
+                                f"{baseline_info.get('mean_probability', 0):.6f}",
+                            )
+                        with sc2:
+                            st.metric(
+                                "Recent Mean Prob",
+                                f"{recent_info.get('mean_probability', 0):.6f}",
+                            )
+                        with sc3:
+                            shift_direction = "+" if mean_shift >= 0 else ""
+                            st.metric(
+                                "Mean Shift",
+                                f"{shift_direction}{mean_shift:.6f}",
+                            )
+
+                        st.caption(
+                            f"Baseline: {baseline_info.get('n_samples', 0):,} samples · "
+                            f"Recent: {recent_info.get('n_samples', 0)} predictions · "
+                            f"Recent fraud rate (>0.5): {recent_info.get('fraud_rate_at_0.5', 0):.4f}"
+                        )
+
+                    # distribution bar chart
+                    st.markdown("")
+                    render_drift_distribution_chart(drift_report)
+
+                    # interpretation guide
+                    st.markdown("")
+                    st.markdown('<div class="section-header">💡 How to Read This</div>', unsafe_allow_html=True)
+
+                    guide_col1, guide_col2 = st.columns(2)
+                    with guide_col1:
+                        st.markdown(
+                            '<div class="info-panel">'
+                            '<strong>What PSI Measures:</strong> PSI compares how the model\'s '
+                            'prediction distribution has changed between training and production. '
+                            'It splits probabilities into 10 bins and checks if the proportions '
+                            'have shifted. PSI below 0.1 means no meaningful change. '
+                            'PSI between 0.1 and 0.2 means moderate change worth watching. '
+                            'PSI above 0.2 means significant change that may need retraining.'
+                            '</div>',
+                            unsafe_allow_html=True,
+                        )
+                    with guide_col2:
+                        st.markdown(
+                            '<div class="info-panel">'
+                            '<strong>What To Do:</strong> If the verdict is NO_DRIFT, the model '
+                            'is performing as expected. If MODERATE_DRIFT, check back after more '
+                            'predictions are collected. If SIGNIFICANT_DRIFT, review whether the '
+                            'transaction patterns have changed and consider retraining the model '
+                            'using accumulated feedback from the Human-in-the-Loop system.'
+                            '</div>',
+                            unsafe_allow_html=True,
+                        )
+
+                elif drift_report and drift_report.get("status") == "INSUFFICIENT_DATA":
+                    st.markdown(
+                        f'<div class="info-panel">'
+                        f'📊 {drift_report.get("message", "Not enough data for drift analysis.")}'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
+                elif drift_report and drift_report.get("status") == "ERROR":
+                    st.error(f"Drift report error: {drift_report.get('message', 'Unknown error')}")
+                else:
+                    st.error("Failed to fetch drift report from the API.")
+
+            # recent prediction log — always show if any predictions exist
+            if total_logged > 0:
+                st.markdown("")
+                with st.expander("📜 Recent Prediction Log", expanded=False):
+                    pred_data = get_monitoring_predictions(limit=20)
+                    if pred_data and pred_data.get("predictions"):
+                        preds = pred_data["predictions"]
+                        st.caption(f"Showing {len(preds)} of {total_logged} total logged predictions (most recent first)")
+
+                        for p in preds:
+                            p_prob = p.get("probability", 0)
+                            p_risk = p.get("risk_level", "?")
+                            p_flagged = p.get("is_flagged", 0)
+                            p_ts = p.get("timestamp", "?")[:19]
+                            p_threshold = p.get("threshold_used", 0)
+
+                            flag_icon = "🚨" if p_flagged else "✅"
+                            risk_class = p_risk.lower() if p_risk.lower() in ["low", "medium", "high", "critical"] else "low"
+                            st.markdown(
+                                f'{flag_icon} `{p_ts}` | '
+                                f'Prob: **{p_prob:.4f}** | '
+                                f'<span class="risk-badge {risk_class}">{p_risk}</span> | '
+                                f'Threshold: {p_threshold:.3f}',
+                                unsafe_allow_html=True,
+                            )
+                    else:
+                        st.caption("No predictions available.")
+
+# ---------------------------------------------------------------------------
 # FOOTER
 # ---------------------------------------------------------------------------
-st.markdown('<div class="app-footer">Explainable Fraud Detection System · Phase 10: Human-in-the-Loop & CI/CD · Built with transparency, auditability, and FCA compliance in mind</div>', unsafe_allow_html=True)
+st.markdown(
+    '<div class="app-footer">'
+    'Explainable Fraud Detection System · Phase 11: Model Monitoring (THE WATCHTOWER) · '
+    'Built with transparency, auditability, and FCA compliance in mind'
+    '</div>',
+    unsafe_allow_html=True,
+)
 logger.info("Dashboard page loaded successfully")
