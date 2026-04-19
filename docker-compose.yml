@@ -38,13 +38,12 @@ services:
     # stops attackers from dropping and running malware in /tmp
     tmpfs:
       - /tmp:noexec,nosuid,size=64M
-    # hardening: cap CPU and memory — limits blast radius if ever breached
-    # prevents cryptominer from using 100% CPU, prevents memory exhaustion
-    deploy:
-      resources:
-        limits:
-          cpus: '2.0'
-          memory: 2G
+    # hardening: cap CPU — prevents a cryptominer inside the container
+    # from consuming all server CPU (server has 4 vCPUs, cap at 2)
+    cpus: 2.0
+    # hardening: cap memory — prevents memory-exhaustion attacks or leaks
+    # from crashing the entire server (server has 8GB RAM, cap at 2G)
+    mem_limit: 2g
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 30s
@@ -77,13 +76,12 @@ services:
     # stops attackers from dropping and running malware in /tmp
     tmpfs:
       - /tmp:noexec,nosuid,size=64M
-    # hardening: cap CPU and memory — limits blast radius if ever breached
-    # prevents cryptominer from using 100% CPU, prevents memory exhaustion
-    deploy:
-      resources:
-        limits:
-          cpus: '2.0'
-          memory: 2G
+    # hardening: cap CPU — prevents a cryptominer inside the container
+    # from consuming all server CPU (server has 4 vCPUs, cap at 2)
+    cpus: 2.0
+    # hardening: cap memory — prevents memory-exhaustion attacks or leaks
+    # from crashing the entire server (server has 8GB RAM, cap at 2G)
+    mem_limit: 2g
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8520/_stcore/health')"]
       interval: 30s
