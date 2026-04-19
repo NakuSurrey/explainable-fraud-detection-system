@@ -2,7 +2,7 @@
 # EXPLAINABLE FRAUD DETECTION SYSTEM — DOCKER COMPOSE
 # ============================================================================
 # Orchestrates both services:
-#   1. API (FastAPI)      — port 8000
+#   1. API (FastAPI)      — port 8002 (external) → 8000 (inside container)
 #   2. Dashboard (Streamlit) — port 8520
 #
 # Usage:
@@ -13,9 +13,7 @@
 #   docker-compose logs -f      # Follow logs from both services
 #   docker-compose logs -f api  # Follow API logs only
 # ============================================================================
-
 version: "3.8"
-
 services:
   # -------------------------------------------------------
   # SERVICE 1: FastAPI Inference API
@@ -26,7 +24,8 @@ services:
       dockerfile: Dockerfile.api
     container_name: fraud-detection-api
     ports:
-      - "8000:8000"
+      # external 8002 maps to container 8000 — matches Hetzner firewall rule
+      - "8002:8000"
     volumes:
       # Persist feedback database across container restarts
       - feedback-data:/app/data/feedback
@@ -35,13 +34,23 @@ services:
     environment:
       - PYTHONUNBUFFERED=1
     restart: unless-stopped
+    # hardening: /tmp in RAM, no-exec, no-setuid, capped at 64MB
+    # stops attackers from dropping and running malware in /tmp
+    tmpfs:
+      - /tmp:noexec,nosuid,size=64M
+    # hardening: cap CPU and memory — limits blast radius if ever breached
+    # prevents cryptominer from using 100% CPU, prevents memory exhaustion
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 30s
       timeout: 10s
       start_period: 60s
       retries: 3
-
   # -------------------------------------------------------
   # SERVICE 2: Streamlit Dashboard
   # -------------------------------------------------------
@@ -64,13 +73,23 @@ services:
       api:
         condition: service_healthy
     restart: unless-stopped
+    # hardening: /tmp in RAM, no-exec, no-setuid, capped at 64MB
+    # stops attackers from dropping and running malware in /tmp
+    tmpfs:
+      - /tmp:noexec,nosuid,size=64M
+    # hardening: cap CPU and memory — limits blast radius if ever breached
+    # prevents cryptominer from using 100% CPU, prevents memory exhaustion
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8520/_stcore/health')"]
       interval: 30s
       timeout: 10s
       start_period: 30s
       retries: 3
-
 # -------------------------------------------------------
 # NAMED VOLUMES
 # -------------------------------------------------------
