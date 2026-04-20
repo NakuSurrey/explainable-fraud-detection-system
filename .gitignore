@@ -39,3 +39,9 @@ Thumbs.db
 # Environment
 .env
 data/monitoring/predictions.db
+
+# HuggingFace Space mirrors (separate git repos, not part of main repo)
+hf-fraud-dashboard/
+
+# Pytest cache
+.pytest_cache/

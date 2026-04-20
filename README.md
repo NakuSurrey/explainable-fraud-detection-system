@@ -1,374 +1,260 @@
 # Explainable Fraud Detection System
 
-## Business Problem
+[![Python](https://img.shields.io/badge/Python-3.11-blue?logo=python&logoColor=white)](https://www.python.org/)
+[![XGBoost](https://img.shields.io/badge/XGBoost-2.0.3-orange)](https://xgboost.readthedocs.io/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.109-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![Streamlit](https://img.shields.io/badge/Streamlit-1.31-FF4B4B?logo=streamlit&logoColor=white)](https://streamlit.io/)
+[![SHAP](https://img.shields.io/badge/SHAP-0.45-purple)](https://shap.readthedocs.io/)
+[![Docker](https://img.shields.io/badge/Docker-29.1-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
+[![Hetzner](https://img.shields.io/badge/Deployed-Hetzner-d50c2d)](https://www.hetzner.com/)
+[![Tests](https://img.shields.io/badge/Tests-204%20passing-brightgreen)]()
+[![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-**Reducing manual audit hours and false positives in financial transaction monitoring while ensuring FCA Consumer Duty compliance.**
+> An end-to-end fraud detection pipeline built for UK banking compliance. Every prediction comes with a plain-English explanation, a human override button, and a paper trail that satisfies FCA Consumer Duty and Article 22 GDPR.
 
-Financial institutions spend thousands of analyst hours each year manually reviewing flagged transactions. The vast majority of these alerts are false positives — legitimate transactions incorrectly flagged by rule-based systems. This creates two critical problems: genuine fraud slips through overwhelmed teams, and operational costs balloon without proportional risk reduction.
+## Live Demo
 
-Traditional "black box" machine learning models can improve detection accuracy, but they introduce a new problem: **auditability**. In regulated industries, a model that cannot explain *why* it flagged a transaction is legally and operationally useless. Regulators, compliance officers, and risk management teams need transparent, traceable decision-making — not opaque probability scores.
+- **API (health check):** http://46.225.208.197:8002/health
+- **Interactive Dashboard:** http://46.225.208.197:8520
 
-This project solves both problems simultaneously.
+Both services run in hardened Docker containers on a Hetzner CPX32 VPS behind a 9-rule firewall.
 
-### The Cost of Inaction
+## What It Does
 
-| Problem | Business Impact |
-|---------|-----------------|
-| High false positive rates | Wasted analyst hours, customer friction, delayed legitimate transactions |
-| Missed fraud (false negatives) | Direct financial losses, regulatory penalties, reputational damage |
-| Unexplainable AI decisions | Non-compliance with FCA Consumer Duty, potential algorithmic discrimination fines |
-| No feedback mechanism | Models degrade over time as fraud patterns evolve (concept drift) |
+- Scores each transaction in **~20 ms** using an XGBoost model trained on 284,807 real credit card transactions
+- Explains **every** prediction with SHAP (global importance) and LIME (local reasoning) — no black-box outputs
+- Detects **fraud rings** by building a NetworkX graph of shared account, device, and merchant edges
+- Lets investigators **override model decisions** with one click and writes every correction to SQLite
+- Monitors **prediction drift** in real time and flags when the live feature distribution diverges from training
+- Exposes **15 REST endpoints** for prediction, feedback, history, stats, monitoring, and explainability
+- Runs the **same containers** locally and in production via `docker-compose`
 
-### ROI and Operational Efficiency
+## Dashboard
 
-This system is designed to deliver measurable value:
+![Transaction Analysis](docs/screenshots/transaction_analysis.png)
+*Transaction Analysis — single-transaction scoring with SHAP waterfall and LIME breakdown*
 
-- **Reduced manual review volume** by prioritizing high-confidence fraud alerts with explainable risk scores, allowing analysts to focus on genuinely suspicious transactions rather than chasing false positives.
-- **Faster investigation cycles** through plain-English explanations of why each transaction was flagged, eliminating the guesswork that slows down manual review.
-- **Regulatory compliance by design** with full auditability of every algorithmic decision, SHAP-based bias detection, and GDPR-compliant data handling.
-- **Fraud ring detection** using network graph analytics to surface coordinated fraud that transaction-level models alone would miss.
-- **Continuous improvement** via a human-in-the-loop feedback mechanism that captures analyst corrections and enables model retraining.
+![Fraud Ring Network](docs/screenshots/fraud_ring.png)
+*Fraud Ring Network — NetworkX graph of shared attributes between suspicious accounts*
 
----
+![Model Performance](docs/screenshots/model_performance.png)
+*Model Performance — XGBoost vs LightGBM head-to-head with AUPRC as the primary metric*
 
-## Solution Overview
+![Model Monitoring](docs/screenshots/model_monitoring.png)
+*Model Monitoring — live drift detection against the 56,746-sample training baseline*
 
-An enterprise-grade machine learning pipeline that:
+## Why I Built It
 
-1. **Detects** fraudulent financial transactions using XGBoost and LightGBM, optimized for heavily imbalanced data using SMOTE and class weighting.
-2. **Explains** every decision using SHAP (SHapley Additive exPlanations) and LIME (Local Interpretable Model-agnostic Explanations), providing both local (single transaction) and global (overall model) interpretability.
-3. **Visualizes** results through an interactive Streamlit dashboard where non-technical stakeholders can input transactions and instantly see risk scores alongside plain-English explanations.
-4. **Maps fraud rings** using NetworkX graph analytics to identify coordinated fraudulent activity across connected accounts.
-5. **Learns** from human investigators through a built-in feedback loop that captures corrections for future model retraining.
+UK banks lose hundreds of millions a year to card fraud, and the tools meant to stop it have a second problem nobody talks about — they are unauditable. A rule-based system flags a transaction, a junior analyst rubber-stamps it, and if a customer complains the bank cannot explain *why* the decision was made.
 
-### Why a White-Box Approach
+The FCA Consumer Duty (July 2023) and Article 22 of the UK GDPR both make this untenable. Customers have a legal right to an explanation. Banks have a regulatory duty to show "foreseeable harm" was considered. A black-box XGBoost model does not meet that bar.
 
-This project deliberately prioritizes **transparency over complexity**. While deep learning models may offer marginal accuracy improvements on certain datasets, they come with significant drawbacks in regulated environments:
-
-- They cannot provide feature-level explanations required by compliance teams.
-- Their inference latency and computational cost are orders of magnitude higher.
-- They are difficult to audit, version, and reproduce.
-
-XGBoost and LightGBM were chosen because their inference latency is measured in **milliseconds**, making them suitable for real-time credit card processing while keeping cloud computing costs extremely low. Combined with SHAP's TreeExplainer, they provide mathematically rigorous explanations for every prediction.
-
----
+This project was built to meet it. Every prediction carries a SHAP and LIME explanation in plain English, every investigator decision is logged, and every correction becomes training data for the next model version. The stack is the same stack real banks use — Python, FastAPI, Docker — so the learning transfers directly.
 
 ## Tech Stack
 
-| Component | Technology | Reasoning |
-|-----------|------------|-----------|
-| Primary Models | XGBoost + LightGBM | Millisecond inference, excellent on tabular data, native SHAP support |
-| Explainability | SHAP (TreeExplainer) + LIME | Gold standard for local and global XAI on tree-based models |
-| Imbalance Handling | SMOTE + Class Weighting | Dual approach; SMOTE applied after train/test split to prevent data leakage |
-| Scaling | RobustScaler | Resistant to outliers common in financial transaction data |
-| Evaluation Metric | AUPRC (primary), Precision, Recall | Correct metrics for highly imbalanced data — standard accuracy is not used |
-| Graph Analytics | NetworkX + PyVis | Fraud ring detection and interactive visualization |
-| Dashboard | Streamlit | Fastest Python data app framework for non-technical users |
-| API | FastAPI | Modern async framework with auto-generated OpenAPI documentation |
-| CI/CD | GitHub Actions | Automated testing on every push |
-| Containerization | Docker | Full reproducibility across environments |
-| Cloud Deployment | DigitalOcean | Cloud hosting with Docker deployment | Enterprise-grade hosting with free student credits |
-| Configuration | Single config.yaml | Centralized configuration — no hardcoded paths anywhere |
-| Logging | Python logging module | Centralized pipeline.log — no print() statements |
-
----
+| Layer | Technology | Why this choice |
+|-------|------------|-----------------|
+| Modelling | XGBoost 2.0.3, LightGBM 4.3.0 | Gradient-boosted trees give millisecond inference and rank at the top of fraud-detection benchmarks. Both trained; XGBoost won on AUPRC |
+| Explainability | SHAP 0.45, LIME | SHAP for global feature importance (Shapley values are game-theoretically fair); LIME for local "why this row" explanations |
+| Graph Analytics | NetworkX 3.2 | Builds undirected graphs of shared accounts, devices, merchants — reveals fraud rings that individual transaction scoring cannot |
+| API | FastAPI 0.109 | Async, auto-generated OpenAPI docs, Pydantic validation — the production standard for Python ML serving |
+| Dashboard | Streamlit 1.31 | Pure Python UI, no frontend build step — investigators get the same tool whether they run it locally or via the live URL |
+| Storage | SQLite (feedback + drift), Parquet (features) | SQLite is zero-infra and appropriate for low-write-volume investigator corrections. Parquet is columnar and compresses 5x over CSV |
+| Orchestration | Docker 29.1 + docker-compose 1.29 | Same container runs on my laptop and on the production server. No "works on my machine" |
+| Deployment | Hetzner CPX32 (8 GB RAM / 4 vCPU) | €16.79/month, full root access, hardware firewall included. Hardened with tmpfs noexec, 2-CPU limits, and a 9-rule inbound firewall |
+| CI/CD | GitHub Actions | Every push runs the full 204-test suite on Ubuntu 22.04 before merging |
+| Logging | Python `logging` + `phase_status.json` | Every phase writes to one pipeline log. If something breaks overnight, the log says which phase and which line |
 
 ## Architecture
 
-The system follows a **decoupled microservices architecture**. Every phase operates independently on a "Read → Process → Save Artifact" principle. If one component fails, no other component is affected, and the project never needs to be restarted.
-
 ```
-┌──────────────────────────────────────────────────────────────────────┐
-│                        CONFIGURATION LAYER                          │
-│                  config.yaml  ←  Single Source of Truth              │
-│                  logger.py   ←  Centralized Logging                 │
-└──────────────────────────────────────────────────────────────────────┘
-        │                    │                    │
-        ▼                    ▼                    ▼
-┌───────────────┐  ┌─────────────────┐  ┌──────────────────┐
-│  DATA LAYER   │  │  MODEL LAYER    │  │ DEPLOYMENT LAYER │
-│               │  │                 │  │                  │
-│ Raw Vault     │  │ XGBoost Train   │  │ FastAPI Server   │
-│     ↓         │  │ LightGBM Train  │  │     ↓            │
-│ Data Cleaning │  │     ↓           │  │ Streamlit UI     │
-│     ↓         │  │ Model Compare   │  │     ↓            │
-│ Feature Eng.  │  │     ↓           │  │ Human Feedback   │
-│     ↓         │  │ Stress Testing  │  │     ↓            │
-│ SMOTE/Split   │  │     ↓           │  │ Feedback DB      │
-│     ↓         │  │ SHAP/LIME Gen.  │  │                  │
-│ Graph (NX)    │  │                 │  │ GitHub Actions   │
-└───────────────┘  └─────────────────┘  └──────────────────┘
+                    ┌──────────────────────────────────────┐
+                    │       CONFIG LAYER  (config.yaml)     │
+                    │       Single source of truth          │
+                    └──────────────────────────────────────┘
+                                      │
+    ┌─────────────────────────────────┼─────────────────────────────────┐
+    ▼                                 ▼                                 ▼
+┌──────────────────┐        ┌──────────────────┐            ┌──────────────────┐
+│   DATA LAYER     │        │   MODEL LAYER    │            │ DEPLOYMENT LAYER │
+│                  │        │                  │            │                  │
+│ Raw Vault        │        │ XGBoost train    │            │ FastAPI (port    │
+│   (Kaggle CC)    │        │ LightGBM train   │            │   8002)          │
+│     ↓            │        │     ↓            │            │     ↓            │
+│ Ingestion +      │        │ AUPRC compare    │            │ SHAP / LIME      │
+│ GDPR log         │        │     ↓            │            │ on demand        │
+│     ↓            │        │ Stress tests     │            │     ↓            │
+│ Feature eng.     │        │ (11 attacks)     │            │ Streamlit        │
+│ (37 features)    │        │     ↓            │            │   (port 8520)    │
+│     ↓            │        │ SHAP / LIME      │            │     ↓            │
+│ Train/val/test   │        │ explainers       │            │ Feedback DB      │
+│ split            │        │                  │            │ (SQLite)         │
+│     ↓            │        │                  │            │     ↓            │
+│ NetworkX graph   │        │                  │            │ Drift monitor    │
+│ (fraud rings)    │        │                  │            │ (baseline JSON)  │
+└──────────────────┘        └──────────────────┘            └──────────────────┘
+                                      │
+                                      ▼
+                    ┌──────────────────────────────────────┐
+                    │   CI/CD  (GitHub Actions)            │
+                    │   204 tests on every push            │
+                    └──────────────────────────────────────┘
 ```
 
-### Phase Independence
-
-Each phase reads artifacts saved by previous phases and produces its own artifacts. This means:
-
-- If the Streamlit dashboard crashes → the trained model and API remain operational.
-- If model training fails → the cleaned/engineered data is preserved and does not need to be regenerated.
-- If data preprocessing has an error → the raw data vault is never overwritten; simply fix the script and re-run.
-- If SHAP computation is slow → the dashboard loads pre-computed explainer objects instead of calculating on-the-fly.
-
----
+Each phase reads the artifacts of the previous phase and writes its own. If the dashboard crashes, the model keeps scoring. If training fails, the raw data vault is untouched and does not need to be regenerated. Phase isolation is the whole point.
 
 ## Project Phases
 
-| # | Phase | Purpose | Key Artifact |
-|---|-------|---------|-------------|
-| 0 | Environment Setup | Project skeleton, config, logging, dependencies | config.yaml, logger.py, requirements.txt |
-| 1 | Business Logic & Compliance | Documentation, regulatory alignment, architecture | README.md, compliance_notes.md |
-| 2 | Data Ingestion | Download and secure raw dataset | data/raw/creditcard.csv |
-| 3 | Data Engineering | Clean, engineer features, split, apply SMOTE | data/processed/*.csv, models/scaler.pkl |
-| 4 | Graph Generation | Map fraud rings using NetworkX | graphs/fraud_graph.gpickle |
-| 5 | Model Training | Train XGBoost + LightGBM, compare, evaluate | models/best_model.pkl, metrics.json |
-| 6 | Stress Testing | Adversarial robustness validation | reports/stress_test_results.json |
-| 7 | Explainability | Generate SHAP + LIME explainer objects | models/shap_explainer.pkl |
-| 8 | Inference API | FastAPI microservice for real-time scoring | REST API endpoint |
-| 9 | Dashboard | Streamlit UI with risk scores, SHAP plots, fraud rings | src/dashboard/app.py |
-| 10 | Human-in-the-Loop & CI/CD | Feedback collection, automated testing pipeline | feedback.db, test.yml |
+| # | Phase | Deliverable | Tests |
+|---|-------|-------------|-------|
+| 0 | Environment & Config | `config.yaml`, `logger.py`, folder skeleton | 12 |
+| 1 | Business Logic & Compliance | `README.md`, `compliance_notes.md`, architecture diagram | 14 |
+| 2 | Data Ingestion (The Vault) | `data_ingestion.py`, `data_manifest.json`, `gdpr_privacy_log.json` | 11 |
+| 3 | Data Engineering & Feature Store | 37 engineered features, train/val/test split, class weights | 18 |
+| 4 | Graph Analytics (The Detective) | `fraud_graph.gpickle`, `fraud_rings.json` via NetworkX | 15 |
+| 5 | Model Training (The Judge) | `xgboost_fraud_v1.pkl`, `lightgbm_fraud_v1.pkl`, `best_model.pkl` | 16 |
+| 6 | Adversarial Stress Testing | 11 perturbation attacks, `stress_test_results.json` | 17 |
+| 7 | Explainability (The Translator) | `shap_explainer.pkl`, `lime_explainer.pkl`, `xai_report.txt` | 14 |
+| 8 | FastAPI Inference Server | 15 REST endpoints, Pydantic validation | 23 |
+| 9 | Streamlit Dashboard (The Front Desk) | 4-tab UI, SHAP waterfalls, graph visualiser | 24 |
+| 10 | Human-in-the-Loop & CI/CD (The Sentinel) | SQLite feedback DB, GitHub Actions workflow | 22 |
+| 11 | Model Monitoring (The Watchtower) | drift detector, 56,746-sample baseline, dashboard tab | 22 |
 
----
+**Total: 12 phases, 204 tests, all passing on main.**
+
+## How To Run Locally
+
+Clone and set up:
+
+```bash
+git clone https://github.com/NakuSurrey/explainable-fraud-detection-system.git
+cd explainable-fraud-detection-system
+python -m venv venv
+source venv/bin/activate    # Windows: venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+Get the dataset (one file, ~150 MB):
+
+```bash
+# Download from Kaggle: https://www.kaggle.com/datasets/mlg-ulb/creditcardfraud
+# Place creditcard.csv in data/raw/
+```
+
+Run the full pipeline (takes ~10 minutes end-to-end on a laptop):
+
+```bash
+python src/preprocessing/data_ingestion.py
+python src/preprocessing/data_engineering.py
+python src/graph_analytics/graph_builder.py
+python src/models/model_training.py
+python src/testing/stress_test.py
+python src/explainability/xai_engine.py
+```
+
+Start the API and Dashboard:
+
+```bash
+# Terminal 1 — API on port 8000
+uvicorn src.api.inference_api:app --reload --port 8000
+
+# Terminal 2 — Dashboard on port 8520
+streamlit run src/dashboard/app.py --server.port 8520
+```
+
+Or run both in Docker:
+
+```bash
+docker-compose up -d
+# API → http://localhost:8002
+# Dashboard → http://localhost:8520
+```
+
+Run the full test suite:
+
+```bash
+python -m pytest tests/ -v
+# Expected: 204 passed
+```
+
+## Key Decisions
+
+- **Chose XGBoost over deep learning** — tabular data with 30 features is exactly where gradient-boosted trees beat neural nets. Training is faster, inference is sub-millisecond, and SHAP works cleanly on tree models
+- **Chose class weights over SMOTE** — SMOTE generates synthetic fraud rows that can leak patterns the model overfits to. Class weights during training achieve the same rebalancing without fabricating data
+- **Chose AUPRC over accuracy** — the dataset is 0.17% fraud. A model that predicts "not fraud" for everything scores 99.83% accuracy and catches zero criminals. AUPRC (area under precision-recall curve) is the correct metric for this imbalance
+- **Chose two Dockerfiles over one** — `Dockerfile.api` and `Dockerfile.dashboard` are built separately so the API image does not ship Streamlit (saves ~200 MB) and the Dashboard image does not ship XGBoost (saves another ~300 MB)
+- **Chose Hetzner over HuggingFace Spaces** — HuggingFace gave one-click deployment but the free tier sleeps after 48 hours and health-checks on port 7860, which fought the existing setup. Hetzner costs €16.79/month, stays up 24/7, and gives full root access for hardening
+- **Chose passive retrain signal over auto-retraining** — FCA SR 11-7 requires model changes to be documented and approved by a human. The system tells the analyst "you have 100+ corrections — time to retrain" and stops there
+- **Chose SQLite over Postgres for feedback** — corrections are written ~10 times a day by investigators. A full database server is wasted infrastructure at that volume
+
+## What I Learned
+
+- A black-box model is a compliance liability, not just an engineering quirk. SHAP and LIME are not nice-to-haves — they are the product
+- AUPRC is the metric that matters for imbalanced data. Every interview question about fraud or anomaly detection should start with "why not accuracy?"
+- Class imbalance has three fixes — resampling, class weights, threshold tuning — and only the last two give you a clean audit trail
+- Feature engineering beats model choice on tabular problems. 37 hand-crafted features moved AUPRC more than switching from LightGBM to XGBoost
+- Deployment hardening is a job. A 9-rule firewall, tmpfs `noexec`, CPU limits, and Docker resource caps are what separate a tutorial from production
+- Phase isolation is the single best architectural decision in the project. Rebuilding the dashboard does not require retraining the model. The Docker split mirrors the phase split
+- Docker-compose on the server turned "it works on my laptop" into "it is the same container". That is what deployment is supposed to feel like
 
 ## Dataset
 
-**Kaggle Credit Card Fraud Detection Dataset**
-- 284,807 transactions over two days by European cardholders
-- 492 fraudulent transactions (0.172% of total) — extreme class imbalance
-- 28 PCA-transformed features (V1–V28) plus Time and Amount
-- Industry-standard benchmark widely recognized in financial ML
+Credit Card Fraud Detection dataset from Kaggle (Machine Learning Group, Université Libre de Bruxelles). 284,807 transactions over two days in September 2013. 492 fraud cases (0.17% class imbalance). Features are PCA-anonymised for GDPR compliance — the original values are never released.
 
-The extreme imbalance (99.83% legitimate vs. 0.17% fraud) makes standard accuracy meaningless. A model predicting "not fraud" for every transaction would achieve 99.83% accuracy while catching zero fraud. This is why AUPRC is the primary evaluation metric.
-
----
-
-## Evaluation Metrics
-
-**Standard accuracy is explicitly not used in this project.**
-
-| Metric | What It Measures | Why It Matters |
-|--------|-----------------|----------------|
-| AUPRC | Model's ability to identify fraud across all thresholds | The correct metric for heavily imbalanced data; insensitive to the large legitimate class |
-| Precision | Of transactions flagged as fraud, how many actually are | High precision = fewer false positives = less wasted analyst time |
-| Recall | Of all actual fraud, how much did the model catch | High recall = fewer missed fraud cases = less financial loss |
-| F1-Score | Harmonic mean of Precision and Recall | Balances the trade-off between catching fraud and avoiding false alarms |
-
----
-
-## Explainability Framework
-
-### Local Interpretability (Single Transaction)
-
-For any flagged transaction, the system generates a SHAP waterfall plot and a plain-English explanation. Example output:
-
-> **Risk Score: 94.2% — HIGH RISK**
->
-> Alert triggered because:
-> - Transaction amount is 5.3x the account's historical average → +38% risk contribution
-> - Transaction occurred at 3:17 AM (outside normal activity window) → +22% risk contribution
-> - 4 transactions from this account in the last 10 minutes → +18% risk contribution
-> - IP geolocation does not match billing address region → +12% risk contribution
-
-### Global Interpretability (Overall Model)
-
-SHAP summary plots show which features are most important across all predictions, enabling auditors and compliance teams to understand the model's general behavior and verify it is not relying on biased or inappropriate features.
-
-### FCA Consumer Duty Alignment
-
-The SHAP framework directly supports compliance with the FCA's Consumer Duty guidelines by:
-
-- Providing mathematical proof of each feature's contribution to every decision.
-- Enabling bias audits to verify the model does not discriminate against specific demographics.
-- Creating an auditable trail that regulators can inspect and verify.
-- Ensuring customers affected by automated decisions can receive clear explanations of why.
-
----
-
-## Data Engineering Safeguards
-
-### No Data Leakage
-
-SMOTE is applied **only to the training set, after the train/validation/test split**. This prevents synthetic samples from leaking information about the test distribution into the training process. Feature scaling is fit on the training set and applied (transform only) to validation and test sets.
-
-### No Hardcoded Paths
-
-Every file path, hyperparameter, and connection string is stored in a single `config.yaml` file. Every script reads from this central configuration. Changing an output directory requires updating one line — the entire 11-phase pipeline adapts instantly.
-
-### No Silent Failures
-
-Python's built-in `logging` module writes to a centralized `pipeline.log`. Every phase logs its start, completion, and any errors to a `phase_status.json` tracker. No `print()` statements are used anywhere in the codebase.
-
----
-
-## Regulatory Compliance
-
-### GDPR Simulation
-
-Although this project uses a public anonymized dataset, it simulates GDPR-compliant data handling practices:
-
-- Raw data is stored in a separate vault directory and is never overwritten.
-- PCA-transformed features ensure no personally identifiable information (PII) is present.
-- Data access patterns follow the principle of least privilege.
-- The feedback database stores only analyst corrections, not raw customer data.
-
-### FCA Consumer Duty
-
-The explainability framework ensures every algorithmic decision can be:
-
-- **Traced** — the exact input features and their SHAP contributions are logged.
-- **Justified** — plain-English explanations accompany every risk score.
-- **Audited** — global feature importance plots verify the model's decision patterns.
-- **Checked for bias** — SHAP values can be analyzed across demographic segments to detect discrimination.
-
-See `docs/compliance_notes.md` for detailed compliance documentation.
-
----
-
-## Future Monitoring & Data Drift
-
-In a live banking environment, fraud patterns evolve constantly. A model trained today will degrade over time as criminals adapt their techniques. This section outlines the monitoring strategy for production deployment.
-
-### Drift Detection
-
-- **Population Stability Index (PSI):** Calculated weekly on input feature distributions. A PSI value above **0.2** indicates significant drift and triggers a review.
-- **AUPRC Decay Monitoring:** The model's AUPRC is tracked against a holdout set refreshed monthly. A decay of more than **0.05** from the baseline triggers a manual retraining review.
-- **Feature Distribution Alerts:** Z-score monitoring on key features (transaction amount, frequency, time patterns) flags unexpected shifts in incoming data.
-
-### Retraining Protocol
-
-1. When drift thresholds are exceeded, the human-in-the-loop feedback database is exported.
-2. Corrected labels from analyst feedback are merged with the original training data.
-3. The decoupled pipeline is re-run from Phase 3 (Data Engineering) through Phase 7 (Explainability).
-4. The new model is compared against the previous version using AUPRC on a consistent holdout set.
-5. Only if the new model meets or exceeds the minimum AUPRC threshold (0.70) is it promoted to production.
-
-### Monitoring Dashboard Metrics (Future Enhancement)
-
-- Weekly AUPRC trend line
-- Feature drift heatmap
-- False positive rate by time period
-- Analyst override frequency (from feedback database)
-
----
-
-## Getting Started
-
-### Prerequisites
-
-- Python 3.10+
-- Git
-- Docker (optional, for containerized deployment)
-
-### Installation
-
-```bash
-# Clone the repository
-git clone https://github.com/NakuSurrey/explainable-fraud-detection-system.git
-
-cd explainable-fraud-detection-system
-
-# Create and activate virtual environment
-python -m venv venv
-
-# On Windows (Git Bash):
-source venv/Scripts/activate
-
-# On macOS/Linux:
-source venv/bin/activate
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Verify setup (Phase 0 tests)
-python -m pytest tests/test_phase0.py -v
-```
-
-### Running the Pipeline
-
-Each phase can be run independently. If a phase fails, fix the issue and re-run only that phase.
-
-```bash
-# Phase 2: Download and ingest data
-python -m src.preprocessing.data_ingestion
-
-# Phase 3: Clean, engineer features, split data
-python -m src.preprocessing.data_engineering
-
-# Phase 4: Generate fraud ring graphs
-python -m src.graph_analytics.graph_builder
-
-# Phase 5: Train and evaluate models
-python -m src.models.model_training
-
-# Phase 6: Run adversarial stress tests
-python -m src.testing.stress_test
-
-# Phase 7: Generate SHAP and LIME explainers
-python -m src.explainability.xai_engine
-
-# Phase 8: Start the inference API
-python -m src.api.inference_api
-
-# Phase 9: Launch the dashboard
-streamlit run src/dashboard/app.py --server.port 8520
-
-# Run all tests
-python -m pytest tests/ -v
-```
-
----
+Licence: Open Database License (ODbL). Downloaded to `data/raw/` at project setup and never committed to the repo.
 
 ## Repository Structure
 
 ```
-fraud-detection-system/
-├── .github/workflows/          # CI/CD: GitHub Actions auto-testing
-│   └── test.yml
-├── config.yaml                 # Central configuration (all phases read from here)
-├── Dockerfile                  # Containerized reproducibility
-├── requirements.txt            # Pinned dependencies
-├── .gitignore                  # Keeps data/models/logs out of version control
-├── README.md                   # This file
-│
+explainable-fraud-detection-system/
+├── config.yaml                        single source of truth
+├── docker-compose.yml                 two-service local + production
+├── Dockerfile.api                     FastAPI container
+├── Dockerfile.dashboard               Streamlit container
+├── requirements.txt                   API + shared deps
+├── requirements-dashboard.txt         Streamlit-only deps
+├── README.md                          this file
+├── .github/workflows/                 GitHub Actions CI
 ├── data/
-│   ├── raw/                    # Phase 2: Untouched dataset vault (never overwritten)
-│   ├── processed/              # Phase 3: Cleaned, split, engineered data
-│   └── feedback/               # Phase 10: Human correction database
-│
-├── models/                     # Phase 5/7: Trained models, scalers, explainers
-├── logs/                       # Centralized pipeline.log + phase_status.json
-├── graphs/                     # Phase 4: NetworkX fraud ring data
-├── reports/                    # Phase 6: Stress test results
-├── tests/                      # Test files organized by phase
-│
+│   ├── raw/                           creditcard.csv (gitignored)
+│   ├── processed/                     train/val/test splits (gitignored)
+│   └── feedback/                      SQLite feedback DB (gitignored)
 ├── docs/
-│   ├── compliance_notes.md     # FCA Consumer Duty & GDPR documentation
-│   └── architecture_diagram.png
-│
+│   ├── architecture_diagram.mermaid
+│   ├── compliance_notes.md
+│   └── screenshots/                   dashboard tab captures
+├── models/                            pickled models + explainers (gitignored)
+├── graphs/                            NetworkX fraud-ring output (gitignored)
+├── reports/                           stress test + XAI reports (gitignored)
+├── logs/                              pipeline.log + phase_status.json (gitignored)
 ├── src/
-│   ├── utils/
-│   │   └── logger.py           # Centralized logger, config loader, phase tracker
-│   ├── preprocessing/          # Phase 3: Data cleaning and feature engineering
-│   ├── features/               # Phase 3: Temporal feature engineering
-│   ├── models/                 # Phase 5: Model training and evaluation
-│   ├── explainability/         # Phase 7: SHAP and LIME generation
-│   ├── api/                    # Phase 8: FastAPI inference server
-│   ├── dashboard/              # Phase 9: Streamlit UI
-│   ├── graph_analytics/        # Phase 4: NetworkX fraud ring mapping
-│   └── stress_testing/         # Phase 6: Adversarial robustness tests
-│
-└── notebooks/                  # Optional: Exploration and prototyping
+│   ├── utils/logger.py                config loader + centralised logging
+│   ├── preprocessing/                 ingestion + feature engineering
+│   ├── graph_analytics/               NetworkX fraud-ring builder
+│   ├── models/                        XGBoost + LightGBM trainers
+│   ├── testing/                       adversarial stress tests
+│   ├── explainability/                SHAP + LIME engine
+│   ├── api/inference_api.py           15-endpoint FastAPI server (1,196 lines)
+│   ├── dashboard/app.py               4-tab Streamlit UI
+│   ├── feedback/                      SQLite feedback manager
+│   └── monitoring/                    drift detection + baseline compare
+└── tests/                             204 tests across 12 phases
 ```
 
----
+## Compliance
+
+- **FCA Consumer Duty (PS22/9):** every flagged transaction produces a plain-English SHAP/LIME report that meets the "foreseeable harm" explanation standard
+- **UK GDPR Article 22:** no fully automated decision is final — every block routes to a human investigator with a one-click override
+- **SR 11-7 (Model Risk Management):** the retrain signal is passive; model version changes require human approval and are logged
+- Full compliance notes in [`docs/compliance_notes.md`](docs/compliance_notes.md)
 
 ## License
 
-This project is developed for educational and portfolio purposes. The dataset used is publicly available under the Open Database License (ODbL) from Kaggle.
-
----
+MIT — see [`LICENSE`](LICENSE).
 
 ## Author
 
-Nakul Arora
+**Nakul Arora** — Built as an end-to-end ML engineering portfolio project demonstrating the full production lifecycle: data ingestion, feature engineering, model training, explainability, API serving, dashboarding, human-in-the-loop feedback, CI/CD, deployment, and live monitoring.
 
-*Engineered a machine learning fraud detection pipeline using XGBoost and Python, applying SMOTE to handle heavily imbalanced financial data and optimizing for AUPRC to minimize false positives. Integrated SHAP and LIME frameworks to provide local and global interpretability, transforming opaque algorithmic decisions into transparent, auditable reports suitable for compliance and risk management teams.*
+GitHub: [@NakuSurrey](https://github.com/NakuSurrey) · Repo: [explainable-fraud-detection-system](https://github.com/NakuSurrey/explainable-fraud-detection-system)
