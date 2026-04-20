@@ -147,11 +147,11 @@ cicd:
   test_command: "python -m pytest tests/ -v"
   min_auprc_threshold: 0.70
 
-# --- Cloud Deployment (Azure) ---
+# --- Cloud Deployment (Hetzner) ---
 deployment:
-  platform: "azure"
-  resource_group: "fraud-detection-rg"
-  region: "eastus"
+  platform: "hetzner"
+  server_ip: "46.225.208.197"
+  location: "nbg1"
 
 # --- Data Drift Monitoring ---
 monitoring:
