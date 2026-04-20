@@ -8,7 +8,7 @@
 project:
   name: "Explainable Fraud Detection System"
   version: "1.0.0"
-  author: "YOUR_NAME_HERE"
+  author: "Nakul Arora"
 
 environment:
   python_version: "3.10"

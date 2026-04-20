@@ -162,7 +162,7 @@ Before the model is deployed, the following checks are performed:
 
 | Field | Value |
 |-------|-------|
-| Document Owner | YOUR_NAME_HERE |
+| Document Owner | Nakul Arora |
 | Version | 1.0 |
 | Created | Phase 1 |
 | Review Frequency | After each model retraining cycle |
