@@ -2,7 +2,7 @@
 
 [![Python](https://img.shields.io/badge/Python-3.11-blue?logo=python&logoColor=white)](https://www.python.org/)
 [![XGBoost](https://img.shields.io/badge/XGBoost-2.0.3-orange)](https://xgboost.readthedocs.io/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.109-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.110-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![Streamlit](https://img.shields.io/badge/Streamlit-1.31-FF4B4B?logo=streamlit&logoColor=white)](https://streamlit.io/)
 [![SHAP](https://img.shields.io/badge/SHAP-0.45-purple)](https://shap.readthedocs.io/)
 [![Docker](https://img.shields.io/badge/Docker-29.1-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
@@ -58,7 +58,7 @@ This project was built to meet it. Every prediction carries a SHAP and LIME expl
 | Modelling | XGBoost 2.0.3, LightGBM 4.3.0 | Gradient-boosted trees give millisecond inference and rank at the top of fraud-detection benchmarks. Both trained; XGBoost won on AUPRC |
 | Explainability | SHAP 0.45, LIME | SHAP for global feature importance (Shapley values are game-theoretically fair); LIME for local "why this row" explanations |
 | Graph Analytics | NetworkX 3.2 | Builds undirected graphs of shared accounts, devices, merchants — reveals fraud rings that individual transaction scoring cannot |
-| API | FastAPI 0.109 | Async, auto-generated OpenAPI docs, Pydantic validation — the production standard for Python ML serving |
+| API | FastAPI 0.110 | Async, auto-generated OpenAPI docs, Pydantic validation — the production standard for Python ML serving |
 | Dashboard | Streamlit 1.31 | Pure Python UI, no frontend build step — investigators get the same tool whether they run it locally or via the live URL |
 | Storage | SQLite (feedback + drift), Parquet (features) | SQLite is zero-infra and appropriate for low-write-volume investigator corrections. Parquet is columnar and compresses 5x over CSV |
 | Orchestration | Docker 29.1 + docker-compose 1.29 | Same container runs on my laptop and on the production server. No "works on my machine" |
