@@ -14,8 +14,8 @@
 
 ## Live Demo
 
-- **API (health check):** http://46.225.208.197:8002/health
-- **Interactive Dashboard:** http://46.225.208.197:8520
+- **API (health check):** http://46.225.208.197/fraud-api/health
+- **Interactive Dashboard:** http://46.225.208.197/fraud-demo/
 
 Both services run in hardened Docker containers on a Hetzner CPX32 VPS behind a 9-rule firewall.
 
@@ -184,7 +184,6 @@ python -m pytest tests/ -v
 - **Chose class weights over SMOTE** — SMOTE generates synthetic fraud rows that can leak patterns the model overfits to. Class weights during training achieve the same rebalancing without fabricating data
 - **Chose AUPRC over accuracy** — the dataset is 0.17% fraud. A model that predicts "not fraud" for everything scores 99.83% accuracy and catches zero criminals. AUPRC (area under precision-recall curve) is the correct metric for this imbalance
 - **Chose two Dockerfiles over one** — `Dockerfile.api` and `Dockerfile.dashboard` are built separately so the API image does not ship Streamlit (saves ~200 MB) and the Dashboard image does not ship XGBoost (saves another ~300 MB)
-- **Chose Hetzner over HuggingFace Spaces** — HuggingFace gave one-click deployment but the free tier sleeps after 48 hours and health-checks on port 7860, which fought the existing setup. Hetzner costs €16.79/month, stays up 24/7, and gives full root access for hardening
 - **Chose passive retrain signal over auto-retraining** — FCA SR 11-7 requires model changes to be documented and approved by a human. The system tells the analyst "you have 100+ corrections — time to retrain" and stops there
 - **Chose SQLite over Postgres for feedback** — corrections are written ~10 times a day by investigators. A full database server is wasted infrastructure at that volume
 
